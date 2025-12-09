@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, CheckCircle2, Clock, Layers, CalendarRange } from 'lucide-react';
 import { ExpenseType, ExpenseItem, ExpenseStatus } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card, Badge } from './UI';
@@ -15,9 +15,10 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false); // Modal de Lote
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Form State
+  // Single Item Form State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
@@ -26,6 +27,12 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [status, setStatus] = useState<ExpenseStatus>('PENDING');
   const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
   const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | undefined>(undefined);
+
+  // Batch Form State
+  const [batchDesc, setBatchDesc] = useState('');
+  const [batchAmount, setBatchAmount] = useState('');
+  const [batchStartMonth, setBatchStartMonth] = useState(''); // MM/YYYY
+  const [batchCount, setBatchCount] = useState('12'); // Quantidade de meses
 
   // Load data
   const loadItems = async () => {
@@ -71,6 +78,20 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
     setIsModalOpen(true);
   };
 
+  const handleOpenBatchModal = () => {
+    setBatchDesc(type === ExpenseType.FEE ? 'Taxa de Condomínio' : 'Parcela');
+    setBatchAmount('');
+    
+    const now = new Date();
+    const m = (now.getMonth() + 1).toString().padStart(2, '0');
+    const y = now.getFullYear();
+    setBatchStartMonth(`${m}/${y}`);
+    
+    setBatchCount('12');
+    setIsBatchModalOpen(true);
+  };
+
+  // Salvar Item Único
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -86,7 +107,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
               setIsSaving(false);
               return;
           }
-          finalDescription = `${monthYear} - ${desc}`;
+          // Se for edição, pode ser que a descrição já contenha a data, então precisamos ter cuidado
+          // Mas para manter simples, assumimos que o usuário segue o padrão ou o sistema força
+          if (!desc.startsWith(monthYear)) {
+             finalDescription = `${monthYear} - ${desc}`;
+          }
           finalMonthYear = monthYear;
       }
 
@@ -98,7 +123,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         date,
         monthYear: finalMonthYear,
         createdAt: Date.now(),
-        receiptUrl: existingReceiptUrl, // Mantém a URL antiga se não houver novo arquivo
+        receiptUrl: existingReceiptUrl, 
         status: status
       };
 
@@ -108,21 +133,89 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         await StorageService.add(itemPayload, selectedFile);
       }
       
-      await loadItems(); // Refresh list from server
+      await loadItems();
       setIsModalOpen(false);
     } catch (error: any) {
-      console.error(error);
-      const isBucketError = error?.message?.includes('Bucket not found');
-      const isPolicyError = error?.message?.includes('policy') || error?.message?.includes('permission') || error?.code === '42501';
-
-      if (isBucketError || isPolicyError) {
-          const detail = isBucketError ? 'O Bucket "receipts" não foi encontrado.' : 'Permissão de upload negada.';
-          alert(`⚠️ ERRO DE CONFIGURAÇÃO NO SUPABASE ⚠️\n\n${detail}\n\nSOLUÇÃO:\n1. Vá ao SQL Editor do Supabase.\n2. Copie e execute o conteúdo do arquivo "supabase_setup.sql" (incluído no projeto).`);
-      } else {
-          alert('Erro ao salvar: ' + (error?.message || 'Verifique o console.'));
-      }
+      handleError(error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Salvar Lote
+  const handleBatchSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+
+    try {
+        if (!batchStartMonth.match(/^\d{2}\/\d{4}$/)) {
+            alert('Mês inicial inválido. Use MM/AAAA');
+            setIsSaving(false);
+            return;
+        }
+
+        const count = parseInt(batchCount);
+        if (count < 2 || count > 60) {
+            alert('A quantidade deve ser entre 2 e 60 parcelas.');
+            setIsSaving(false);
+            return;
+        }
+
+        const [startM, startY] = batchStartMonth.split('/').map(Number);
+        const itemsToCreate: ExpenseItem[] = [];
+        const baseAmount = parseFloat(batchAmount);
+
+        for (let i = 0; i < count; i++) {
+            // Lógica de incremento de data
+            let currentMonth = startM + i;
+            let currentYear = startY;
+            
+            // Ajustar virada de ano (ex: mês 13 vira mês 1 do ano seguinte)
+            while (currentMonth > 12) {
+                currentMonth -= 12;
+                currentYear++;
+            }
+            
+            const monthStr = currentMonth.toString().padStart(2, '0');
+            const monthYearStr = `${monthStr}/${currentYear}`;
+            
+            // Data do registro: dia 10 de cada mês (padrão)
+            const isoDate = `${currentYear}-${monthStr}-10`;
+
+            itemsToCreate.push({
+                id: crypto.randomUUID(),
+                type,
+                description: `${monthYearStr} - ${batchDesc}`,
+                amount: baseAmount,
+                date: isoDate,
+                monthYear: monthYearStr,
+                createdAt: Date.now(),
+                status: 'PENDING'
+            });
+        }
+
+        await StorageService.addBatch(itemsToCreate);
+        await loadItems();
+        setIsBatchModalOpen(false);
+        alert(`${count} parcelas geradas com sucesso!`);
+
+    } catch (error: any) {
+        handleError(error);
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
+  const handleError = (error: any) => {
+    console.error(error);
+    const isBucketError = error?.message?.includes('Bucket not found');
+    const isPolicyError = error?.message?.includes('policy') || error?.message?.includes('permission') || error?.code === '42501';
+
+    if (isBucketError || isPolicyError) {
+        const detail = isBucketError ? 'O Bucket "receipts" não foi encontrado.' : 'Permissão de upload negada.';
+        alert(`⚠️ ERRO DE CONFIGURAÇÃO NO SUPABASE ⚠️\n\n${detail}\n\nSOLUÇÃO:\n1. Vá ao SQL Editor do Supabase.\n2. Copie e execute o conteúdo do arquivo "supabase_setup.sql" (incluído no projeto).`);
+    } else {
+        alert('Erro ao salvar: ' + (error?.message || 'Verifique o console.'));
     }
   };
 
@@ -142,8 +235,6 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         .filter(i => i.description.toLowerCase().includes(searchQuery.toLowerCase()))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [items, searchQuery]);
-
-  const total = useMemo(() => items.reduce((acc, curr) => acc + curr.amount, 0), [items]);
 
   // Status Badge Component Helper
   const StatusBadge = ({ status }: { status: ExpenseStatus }) => {
@@ -172,40 +263,30 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
           <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
           <p className="text-gray-500">{description}</p>
         </div>
-        <Button onClick={() => handleOpenModal()} className="shadow-lg shadow-indigo-200">
-          <Plus className="w-4 h-4 mr-2" />
-          Adicionar Novo
-        </Button>
+        <div className="flex gap-2">
+            {(type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) && (
+                <Button onClick={handleOpenBatchModal} variant="secondary" className="shadow-sm">
+                    <Layers className="w-4 h-4 mr-2" />
+                    Gerar em Lote
+                </Button>
+            )}
+            <Button onClick={() => handleOpenModal()} className="shadow-lg shadow-indigo-200">
+                <Plus className="w-4 h-4 mr-2" />
+                Adicionar Novo
+            </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-none">
-          <p className="text-indigo-100 font-medium text-sm">Total Acumulado</p>
-          <h3 className="text-3xl font-bold mt-1">
-            {isLoading ? '...' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
-          </h3>
-        </Card>
-        <Card>
-           <p className="text-gray-500 font-medium text-sm">Registros</p>
-           <h3 className="text-3xl font-bold mt-1 text-gray-800">{isLoading ? '...' : items.length}</h3>
-        </Card>
-        <Card>
-            <p className="text-gray-500 font-medium text-sm">Status (Pendentes)</p>
-            <h3 className="text-3xl font-bold mt-1 text-amber-500">
-                {isLoading ? '...' : items.filter(i => i.status === 'PENDING').length}
-            </h3>
-        </Card>
-      </div>
+      {/* Stats Cards REMOVIDOS conforme solicitação */}
 
       {/* Filter & Table */}
-      <Card className="overflow-hidden p-0">
-        <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+      <Card className="overflow-hidden p-0 border border-gray-200 shadow-sm">
+        <div className="p-4 border-b border-gray-100 bg-white flex items-center gap-2">
             <Search className="w-4 h-4 text-gray-400" />
             <input 
                 type="text" 
                 placeholder="Buscar por descrição..." 
-                className="bg-transparent border-none focus:ring-0 text-sm w-full"
+                className="bg-transparent border-none focus:ring-0 text-sm w-full outline-none"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -244,9 +325,6 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                     <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{item.description}</div>
-                        {item.type !== ExpenseType.NOTE && (
-                            <Badge color="bg-blue-100 text-blue-800 mt-1">Recorrente</Badge>
-                        )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(item.date).toLocaleDateString('pt-BR')}
@@ -290,7 +368,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         </div>
       </Card>
 
-      {/* Add/Edit Modal */}
+      {/* SINGLE ITEM Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => !isSaving && setIsModalOpen(false)}
@@ -424,6 +502,82 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
               ) : (editingId ? 'Salvar Alterações' : 'Adicionar')}
             </Button>
           </div>
+        </form>
+      </Modal>
+
+      {/* BATCH GENERATOR Modal */}
+      <Modal
+        isOpen={isBatchModalOpen}
+        onClose={() => !isSaving && setIsBatchModalOpen(false)}
+        title="Gerar Parcelas em Lote"
+      >
+        <form onSubmit={handleBatchSave} className="space-y-4">
+            <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 text-sm text-indigo-800 mb-4 flex items-start gap-2">
+                <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                    <p className="font-semibold">Gerador Automático</p>
+                    <p className="opacity-90 mt-1">
+                        Esta ferramenta criará várias parcelas idênticas sequencialmente. 
+                        A data de referência (Mês/Ano) será incrementada automaticamente para cada registro.
+                    </p>
+                </div>
+            </div>
+
+            <Input
+                label="Descrição Base"
+                value={batchDesc}
+                onChange={(e) => setBatchDesc(e.target.value)}
+                placeholder="Ex: Taxa de Condomínio"
+                required
+                disabled={isSaving}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+                <Input
+                    label="Valor Mensal (R$)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={batchAmount}
+                    onChange={(e) => setBatchAmount(e.target.value)}
+                    required
+                    disabled={isSaving}
+                />
+                <Input
+                    label="Quantidade de Meses"
+                    type="number"
+                    min="2"
+                    max="60"
+                    value={batchCount}
+                    onChange={(e) => setBatchCount(e.target.value)}
+                    required
+                    disabled={isSaving}
+                />
+            </div>
+
+            <Input
+                label="Mês Inicial (MM/AAAA)"
+                value={batchStartMonth}
+                onChange={(e) => setBatchStartMonth(e.target.value)}
+                placeholder="Ex: 01/2024"
+                pattern="\d{2}/\d{4}"
+                required
+                className="font-mono"
+                disabled={isSaving}
+            />
+
+            <div className="pt-4 flex justify-end gap-3">
+                <Button type="button" variant="ghost" onClick={() => setIsBatchModalOpen(false)} disabled={isSaving}>
+                    Cancelar
+                </Button>
+                <Button type="submit" disabled={isSaving}>
+                    {isSaving ? (
+                        <span className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> Gerando...
+                        </span>
+                    ) : 'Gerar Lote'}
+                </Button>
+            </div>
         </form>
       </Modal>
     </div>

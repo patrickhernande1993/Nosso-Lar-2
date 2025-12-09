@@ -123,6 +123,30 @@ export const StorageService = {
     }
   },
 
+  // Novo método para adicionar vários itens de uma vez
+  addBatch: async (items: ExpenseItem[]): Promise<void> => {
+    const dbItems = items.map(item => ({
+      id: item.id,
+      type: item.type,
+      description: item.description,
+      amount: item.amount,
+      date: item.date,
+      month_year: item.monthYear,
+      created_at: item.createdAt,
+      receipt_url: item.receiptUrl,
+      status: item.status
+    }));
+
+    const { error } = await supabase
+      .from('expenses')
+      .insert(dbItems);
+
+    if (error) {
+      console.error('Erro ao salvar lote no banco:', error);
+      throw error;
+    }
+  },
+
   update: async (updatedItem: ExpenseItem, file?: File): Promise<void> => {
     let receiptUrl = updatedItem.receiptUrl;
 
