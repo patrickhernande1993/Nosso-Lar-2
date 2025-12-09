@@ -33,6 +33,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [batchAmount, setBatchAmount] = useState('');
   const [batchStartMonth, setBatchStartMonth] = useState(''); // MM/YYYY
   const [batchCount, setBatchCount] = useState('12'); // Quantidade de meses
+  const [batchDueDay, setBatchDueDay] = useState('10'); // Dia do vencimento padrão
 
   // Load data
   const loadItems = async () => {
@@ -88,6 +89,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
     setBatchStartMonth(`${m}/${y}`);
     
     setBatchCount('12');
+    setBatchDueDay('10');
     setIsBatchModalOpen(true);
   };
 
@@ -161,6 +163,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             return;
         }
 
+        const dueDay = parseInt(batchDueDay);
+        if (dueDay < 1 || dueDay > 31) {
+            alert('Dia de vencimento inválido.');
+            setIsSaving(false);
+            return;
+        }
+
         const [startM, startY] = batchStartMonth.split('/').map(Number);
         const itemsToCreate: ExpenseItem[] = [];
         const baseAmount = parseFloat(batchAmount);
@@ -179,8 +188,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             const monthStr = currentMonth.toString().padStart(2, '0');
             const monthYearStr = `${monthStr}/${currentYear}`;
             
-            // Data do registro: dia 10 de cada mês (padrão)
-            const isoDate = `${currentYear}-${monthStr}-10`;
+            // Data do registro: dia escolhido de cada mês
+            const dayStr = batchDueDay.padStart(2, '0');
+            const isoDate = `${currentYear}-${monthStr}-${dayStr}`;
 
             itemsToCreate.push({
                 id: crypto.randomUUID(),
@@ -233,7 +243,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const filteredItems = useMemo(() => {
     return items
         .filter(i => i.description.toLowerCase().includes(searchQuery.toLowerCase()))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [items, searchQuery]);
 
   // Status Badge Component Helper
@@ -277,8 +287,6 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         </div>
       </div>
 
-      {/* Stats Cards REMOVIDOS conforme solicitação */}
-
       {/* Filter & Table */}
       <Card className="overflow-hidden p-0 border border-gray-200 shadow-sm">
         <div className="p-4 border-b border-gray-100 bg-white flex items-center gap-2">
@@ -297,7 +305,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             <thead className="bg-gray-50">
               <tr>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vencimento</th>
                 <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
                 <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Comprovante</th>
@@ -327,7 +335,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                         <div className="text-sm font-medium text-gray-900">{item.description}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(item.date).toLocaleDateString('pt-BR')}
+                        {new Date(item.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                         <StatusBadge status={item.status} />
@@ -439,7 +447,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 disabled={isSaving}
             />
             <Input
-                label="Data do Registro"
+                label="Data de Vencimento"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -555,16 +563,28 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 />
             </div>
 
-            <Input
-                label="Mês Inicial (MM/AAAA)"
-                value={batchStartMonth}
-                onChange={(e) => setBatchStartMonth(e.target.value)}
-                placeholder="Ex: 01/2024"
-                pattern="\d{2}/\d{4}"
-                required
-                className="font-mono"
-                disabled={isSaving}
-            />
+            <div className="grid grid-cols-2 gap-4">
+                <Input
+                    label="Mês Inicial (MM/AAAA)"
+                    value={batchStartMonth}
+                    onChange={(e) => setBatchStartMonth(e.target.value)}
+                    placeholder="Ex: 01/2024"
+                    pattern="\d{2}/\d{4}"
+                    required
+                    className="font-mono"
+                    disabled={isSaving}
+                />
+                <Input
+                    label="Dia do Vencimento"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={batchDueDay}
+                    onChange={(e) => setBatchDueDay(e.target.value)}
+                    required
+                    disabled={isSaving}
+                />
+            </div>
 
             <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => setIsBatchModalOpen(false)} disabled={isSaving}>
