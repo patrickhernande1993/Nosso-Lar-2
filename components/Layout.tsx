@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, Home, FileText, CreditCard, DollarSign, Heart, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater } from 'lucide-react';
+import { Menu, X, Home, FileText, CreditCard, DollarSign, Heart, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList } from 'lucide-react';
 import { ExpenseType, NavigationItem } from '../types';
 
 const NAV_ITEMS: NavigationItem[] = [
@@ -26,6 +26,7 @@ const NAV_ITEMS: NavigationItem[] = [
     children: [
       { label: 'Espaço Evento', path: '/event-space', icon: <MapPin className="w-4 h-4" />, type: ExpenseType.EVENT_SPACE },
       { label: 'Buffet', path: '/buffet', icon: <Utensils className="w-4 h-4" />, type: ExpenseType.BUFFET },
+      { label: 'Cerimonialista', path: '/ceremonialist', icon: <ClipboardList className="w-4 h-4" />, type: ExpenseType.CEREMONIALIST },
       { label: 'Fotógrafo', path: '/photographer', icon: <Camera className="w-4 h-4" />, type: ExpenseType.PHOTOGRAPHER },
       { label: 'Decoração', path: '/decoration', icon: <Flower2 className="w-4 h-4" />, type: ExpenseType.DECORATION },
       { label: 'Bar sem álcool', path: '/bar', icon: <GlassWater className="w-4 h-4" />, type: ExpenseType.NON_ALCOHOLIC_BAR },

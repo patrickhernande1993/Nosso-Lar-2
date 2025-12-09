@@ -80,7 +80,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   };
 
   const handleOpenBatchModal = () => {
-    setBatchDesc(type === ExpenseType.FEE ? 'Taxa de Condomínio' : 'Parcela');
+    let defaultDesc = '';
+    if (type === ExpenseType.FEE) defaultDesc = 'Taxa de Condomínio';
+    else if (type === ExpenseType.INSTALLMENT) defaultDesc = 'Parcela';
+    
+    setBatchDesc(defaultDesc);
     setBatchAmount('');
     
     const now = new Date();
@@ -103,7 +107,15 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       let finalDescription = desc;
       let finalMonthYear = undefined;
 
-      if (type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) {
+      // Validação: Mês/Ano é obrigatório apenas para Parcelas e Taxas
+      if ((type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) && !monthYear) {
+          alert('Mês/Ano é obrigatório para este tipo de despesa.');
+          setIsSaving(false);
+          return;
+      }
+
+      // Se houver Mês/Ano preenchido (seja obrigatório ou opcional), aplica formatação
+      if (monthYear) {
           if (!monthYear.match(/^\d{2}\/\d{4}$/)) {
               alert('Formato de Mês/Ano inválido. Use MM/AAAA.');
               setIsSaving(false);
@@ -273,12 +285,12 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
           <p className="text-sm text-gray-500">{description}</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-            {(type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) && (
-                <Button onClick={handleOpenBatchModal} variant="secondary" className="shadow-sm w-full sm:w-auto justify-center">
-                    <Layers className="w-4 h-4 mr-2" />
-                    Gerar em Lote
-                </Button>
-            )}
+            {/* Botão Gerar em Lote disponível para todos os tipos */}
+            <Button onClick={handleOpenBatchModal} variant="secondary" className="shadow-sm w-full sm:w-auto justify-center">
+                <Layers className="w-4 h-4 mr-2" />
+                Gerar em Lote
+            </Button>
+            
             <Button onClick={() => handleOpenModal()} className="shadow-lg shadow-indigo-200 w-full sm:w-auto justify-center">
                 <Plus className="w-4 h-4 mr-2" />
                 Adicionar Novo
@@ -456,18 +468,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             </div>
           </div>
 
-          {(type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) && (
-             <Input
-                label="Mês/Ano Referência (MM/AAAA)"
-                value={monthYear}
-                onChange={(e) => setMonthYear(e.target.value)}
-                placeholder="Ex: 01/2024"
-                pattern="\d{2}/\d{4}"
-                required
-                className="font-mono"
-                disabled={isSaving}
-            />
-          )}
+          <Input
+            label="Mês/Ano Referência (MM/AAAA)"
+            value={monthYear}
+            onChange={(e) => setMonthYear(e.target.value)}
+            placeholder="Ex: 01/2024"
+            pattern="\d{2}/\d{4}"
+            required={type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE}
+            className="font-mono"
+            disabled={isSaving}
+          />
 
           <Input
             label="Descrição"

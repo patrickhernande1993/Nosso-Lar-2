@@ -13,6 +13,7 @@ export enum ExpenseType {
   PHOTOGRAPHER = 'PHOTOGRAPHER', // Fotógrafo
   DECORATION = 'DECORATION', // Decoração
   NON_ALCOHOLIC_BAR = 'NON_ALCOHOLIC_BAR', // Bar sem álcool
+  CEREMONIALIST = 'CEREMONIALIST', // Cerimonialista
 }
 
 export type ExpenseStatus = 'PAID' | 'PENDING';

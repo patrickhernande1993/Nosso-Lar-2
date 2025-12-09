@@ -18,6 +18,7 @@ const APT_COLORS = [
 const WED_COLORS = [
   '#ef4444', // Red (Espaço)
   '#f97316', // Orange (Buffet)
+  '#eab308', // Yellow (Cerimonialista)
   '#14b8a6', // Teal (Fotógrafo)
   '#8b5cf6', // Violet (Decoração)
   '#06b6d4', // Cyan (Bar)
@@ -66,16 +67,18 @@ export const Dashboard: React.FC = () => {
         // --- CÁLCULOS CASAMENTO ---
         const eventSpace = items.filter(i => i.type === ExpenseType.EVENT_SPACE).reduce((acc, c) => acc + c.amount, 0);
         const buffet = items.filter(i => i.type === ExpenseType.BUFFET).reduce((acc, c) => acc + c.amount, 0);
+        const ceremonialist = items.filter(i => i.type === ExpenseType.CEREMONIALIST).reduce((acc, c) => acc + c.amount, 0);
         const photographer = items.filter(i => i.type === ExpenseType.PHOTOGRAPHER).reduce((acc, c) => acc + c.amount, 0);
         const decoration = items.filter(i => i.type === ExpenseType.DECORATION).reduce((acc, c) => acc + c.amount, 0);
         const bar = items.filter(i => i.type === ExpenseType.NON_ALCOHOLIC_BAR).reduce((acc, c) => acc + c.amount, 0);
 
-        const wedTotalCalc = eventSpace + buffet + photographer + decoration + bar;
+        const wedTotalCalc = eventSpace + buffet + ceremonialist + photographer + decoration + bar;
         setWedTotal(wedTotalCalc);
 
         setWedData([
           { name: 'Espaço Evento', value: eventSpace, type: ExpenseType.EVENT_SPACE },
           { name: 'Buffet', value: buffet, type: ExpenseType.BUFFET },
+          { name: 'Cerimonialista', value: ceremonialist, type: ExpenseType.CEREMONIALIST },
           { name: 'Fotógrafo', value: photographer, type: ExpenseType.PHOTOGRAPHER },
           { name: 'Decoração', value: decoration, type: ExpenseType.DECORATION },
           { name: 'Bar sem álcool', value: bar, type: ExpenseType.NON_ALCOHOLIC_BAR },

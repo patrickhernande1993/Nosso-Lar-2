@@ -86,6 +86,16 @@ const App: React.FC = () => {
             } 
           />
           <Route 
+            path="/ceremonialist" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.CEREMONIALIST} 
+                title="Cerimonialista" 
+                description="Assessoria e cerimonial do evento."
+              />
+            } 
+          />
+          <Route 
             path="/photographer" 
             element={
               <ExpenseModule 
