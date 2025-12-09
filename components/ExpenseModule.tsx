@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye } from 'lucide-react';
 import { ExpenseType, ExpenseItem } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card, Badge } from './UI';
@@ -108,8 +108,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       setIsModalOpen(false);
     } catch (error: any) {
       console.error(error);
-      if (error?.message?.includes('new row violates row-level security policy') || error?.statusCode === '42501') {
-          alert('Erro de Permissão: Não foi possível salvar o arquivo. Verifique se as Policies do Supabase Storage foram criadas corretamente.');
+      if (error?.message?.includes('policy') || error?.message?.includes('permission') || error?.code === '42501') {
+          alert('ERRO DE PERMISSÃO: O Supabase bloqueou o upload.\n\nVocê precisa rodar o script SQL fornecido (supabase_setup.sql) no painel do Supabase para liberar o acesso público ao Bucket "receipts".');
       } else {
           alert('Erro ao salvar: ' + (error?.message || 'Verifique o console.'));
       }
@@ -233,13 +233,15 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                                 href={item.receiptUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center text-indigo-600 hover:text-indigo-800 bg-indigo-50 p-1.5 rounded-full transition-colors"
+                                className="inline-block text-decoration-none"
                                 title="Ver Comprovante"
                             >
-                                <Paperclip className="w-4 h-4" />
+                                <Button variant="secondary" size="sm" className="flex items-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                                    <Eye className="w-3 h-3" /> Ver Anexo
+                                </Button>
                             </a>
                         ) : (
-                            <span className="text-gray-300">-</span>
+                            <span className="text-gray-300 text-xs">-</span>
                         )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -308,11 +310,28 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             />
           </div>
 
-          <div>
-             <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+             <label className="block text-sm font-medium text-gray-700 mb-2">
                 Comprovante (Imagem/PDF)
              </label>
-             <div className="mt-1 flex items-center gap-2">
+             
+             {existingReceiptUrl && (
+                 <div className="mb-3 flex items-center justify-between bg-white p-2 rounded border border-gray-200">
+                     <span className="text-xs text-gray-500 flex items-center gap-1">
+                         <Paperclip className="w-3 h-3" /> Anexo atual disponível
+                     </span>
+                     <a 
+                        href={existingReceiptUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded"
+                    >
+                        <ExternalLink className="w-3 h-3" /> Abrir Atual
+                    </a>
+                 </div>
+             )}
+
+             <div className="mt-1">
                 <input
                     type="file"
                     accept="image/*,.pdf"
@@ -321,17 +340,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                         file:mr-4 file:py-2 file:px-4
                         file:rounded-full file:border-0
                         file:text-sm file:font-semibold
-                        file:bg-indigo-50 file:text-indigo-700
-                        hover:file:bg-indigo-100"
+                        file:bg-indigo-100 file:text-indigo-700
+                        hover:file:bg-indigo-200"
                     disabled={isSaving}
                 />
-                {existingReceiptUrl && !selectedFile && (
-                    <a href={existingReceiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                        <ExternalLink className="w-3 h-3" /> Atual
-                    </a>
-                )}
              </div>
-             <p className="text-xs text-gray-400 mt-1">Opcional. Substitui o atual se enviado.</p>
+             <p className="text-xs text-gray-400 mt-2">
+                 {existingReceiptUrl 
+                    ? "Se selecionar um arquivo, o atual será substituído." 
+                    : "Formatos aceitos: Imagens (JPG, PNG) e PDF."}
+             </p>
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

@@ -4,22 +4,21 @@ import { supabase } from '../lib/supabase';
 // Função auxiliar para upload de arquivo
 const uploadReceipt = async (file: File): Promise<string | null> => {
   try {
-    // Sanitizar o nome do arquivo (remove acentos e caracteres especiais)
-    const fileExt = file.name.split('.').pop();
-    const cleanFileName = file.name
-        .replace(/[^a-zA-Z0-9]/g, '') // Remove tudo que não for letra ou número
-        .substring(0, 20); // Limita tamanho
-        
-    const fileName = `${Date.now()}-${cleanFileName}.${fileExt}`;
+    // Gera um nome de arquivo seguro usando Timestamp + String Aleatória
+    // Isso evita problemas com acentos, espaços e caracteres especiais do SO do usuário
+    const fileExt = file.name.split('.').pop() || 'unknown';
+    const randomString = Math.random().toString(36).substring(2, 10);
+    const fileName = `${Date.now()}_${randomString}.${fileExt}`;
     const filePath = `${fileName}`;
 
-    console.log('Iniciando upload:', filePath);
+    console.log('Iniciando upload seguro:', filePath);
 
+    // Upload com upsert true para garantir escrita
     const { error: uploadError } = await supabase.storage
       .from('receipts')
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: true
       });
 
     if (uploadError) {
@@ -27,14 +26,15 @@ const uploadReceipt = async (file: File): Promise<string | null> => {
       throw uploadError;
     }
 
+    // Obtém a URL pública
     const { data } = supabase.storage
       .from('receipts')
       .getPublicUrl(filePath);
 
-    console.log('Upload sucesso, URL:', data.publicUrl);
+    console.log('Upload sucesso, URL gerada:', data.publicUrl);
     return data.publicUrl;
   } catch (error) {
-    console.error('Erro ao fazer upload do comprovante:', error);
+    console.error('FALHA CRÍTICA NO UPLOAD:', error);
     return null;
   }
 };
@@ -89,12 +89,13 @@ export const StorageService = {
     let receiptUrl = item.receiptUrl;
 
     if (file) {
-      console.log('Arquivo detectado para upload...');
+      console.log('Arquivo detectado para upload (Novo Item)...');
       const uploadedUrl = await uploadReceipt(file);
       if (uploadedUrl) {
           receiptUrl = uploadedUrl;
       } else {
-          console.warn('Upload falhou, salvando registro sem anexo.');
+          // Se falhar o upload, lançamos erro para não salvar o registro sem o anexo
+          throw new Error("Falha no upload do comprovante. O registro não foi salvo.");
       }
     }
 
@@ -123,9 +124,13 @@ export const StorageService = {
     let receiptUrl = updatedItem.receiptUrl;
 
     if (file) {
-      console.log('Arquivo detectado para atualização...');
+      console.log('Arquivo detectado para atualização (Edit Item)...');
       const uploadedUrl = await uploadReceipt(file);
-      if (uploadedUrl) receiptUrl = uploadedUrl;
+      if (uploadedUrl) {
+        receiptUrl = uploadedUrl;
+      } else {
+        throw new Error("Falha no upload do novo comprovante.");
+      }
     }
 
     const dbItem = {
