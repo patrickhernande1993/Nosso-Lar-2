@@ -4,6 +4,15 @@ export enum ExpenseType {
   INSTALLMENT = 'INSTALLMENT', // Parcelas
   NOTE = 'NOTE', // Notas Promissórias
   FEE = 'FEE', // Taxas de Condomínio
+  FURNITURE = 'FURNITURE', // Móveis Planejados
+  UTILITIES = 'UTILITIES', // Energia Elétrica / Utilidades
+  
+  // Novos tipos para Casamento
+  EVENT_SPACE = 'EVENT_SPACE', // Espaço Evento
+  BUFFET = 'BUFFET', // Buffet
+  PHOTOGRAPHER = 'PHOTOGRAPHER', // Fotógrafo
+  DECORATION = 'DECORATION', // Decoração
+  NON_ALCOHOLIC_BAR = 'NON_ALCOHOLIC_BAR', // Bar sem álcool
 }
 
 export type ExpenseStatus = 'PAID' | 'PENDING';
@@ -22,7 +31,8 @@ export interface ExpenseItem {
 
 export interface NavigationItem {
   label: string;
-  path: string;
+  path?: string;
   icon: React.ReactNode;
   type?: ExpenseType;
+  children?: NavigationItem[];
 }

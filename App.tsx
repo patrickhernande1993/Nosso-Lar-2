@@ -11,13 +11,15 @@ const App: React.FC = () => {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          
+          {/* Rotas de Apartamento */}
           <Route 
             path="/installments" 
             element={
               <ExpenseModule 
                 type={ExpenseType.INSTALLMENT} 
                 title="Parcelas" 
-                description="Gerencie as despesas recorrentes mensais do condomínio."
+                description="Gerencie as despesas recorrentes mensais do imóvel."
               />
             } 
           />
@@ -38,6 +40,78 @@ const App: React.FC = () => {
                 type={ExpenseType.FEE} 
                 title="Taxas de Condomínio" 
                 description="Gerenciamento da arrecadação mensal fixa."
+              />
+            } 
+          />
+          <Route 
+            path="/furniture" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.FURNITURE} 
+                title="Móveis Planejados" 
+                description="Gestão de custos com mobília e decoração."
+              />
+            } 
+          />
+          <Route 
+            path="/utilities" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.UTILITIES} 
+                title="Energia Elétrica" 
+                description="Histórico de contas de luz e utilidades."
+              />
+            } 
+          />
+
+          {/* Rotas de Casamento */}
+          <Route 
+            path="/event-space" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.EVENT_SPACE} 
+                title="Espaço Evento" 
+                description="Custos relacionados ao local da cerimônia e festa."
+              />
+            } 
+          />
+          <Route 
+            path="/buffet" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.BUFFET} 
+                title="Buffet" 
+                description="Serviço de alimentação e bebidas."
+              />
+            } 
+          />
+          <Route 
+            path="/photographer" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.PHOTOGRAPHER} 
+                title="Fotógrafo" 
+                description="Equipe de fotografia e filmagem."
+              />
+            } 
+          />
+          <Route 
+            path="/decoration" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.DECORATION} 
+                title="Decoração" 
+                description="Flores, arranjos e ambientação."
+              />
+            } 
+          />
+          <Route 
+            path="/bar" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.NON_ALCOHOLIC_BAR} 
+                title="Bar sem Álcool" 
+                description="Serviço de drinks não alcoólicos, sucos e refrigerantes."
               />
             } 
           />
