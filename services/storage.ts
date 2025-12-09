@@ -1,51 +1,105 @@
 import { ExpenseItem, ExpenseType } from '../types';
-
-const STORAGE_KEY = 'condo_manager_data_v1';
+import { supabase } from '../lib/supabase';
 
 export const StorageService = {
-  getAll: (): ExpenseItem[] => {
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      console.error('Error reading from localStorage', e);
+  getAll: async (): Promise<ExpenseItem[]> => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*');
+
+    if (error) {
+      console.error('Erro ao buscar dados:', error);
       return [];
     }
+
+    // Mapear snake_case do banco para camelCase da aplicação
+    return data.map((item: any) => ({
+      id: item.id,
+      type: item.type as ExpenseType,
+      description: item.description,
+      amount: item.amount,
+      date: item.date,
+      monthYear: item.month_year,
+      createdAt: item.created_at
+    }));
   },
 
-  save: (items: ExpenseItem[]): void => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch (e) {
-      console.error('Error saving to localStorage', e);
+  getByType: async (type: ExpenseType): Promise<ExpenseItem[]> => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('type', type);
+
+    if (error) {
+      console.error('Erro ao buscar dados por tipo:', error);
+      return [];
+    }
+
+    return data.map((item: any) => ({
+      id: item.id,
+      type: item.type as ExpenseType,
+      description: item.description,
+      amount: item.amount,
+      date: item.date,
+      monthYear: item.month_year,
+      createdAt: item.created_at
+    }));
+  },
+
+  add: async (item: ExpenseItem): Promise<void> => {
+    // Preparar objeto para o banco (snake_case e remover ID para deixar o banco gerar se for novo, 
+    // mas se o app gera UUID, podemos passar. O script SQL usa default gen_random_uuid, 
+    // mas se passarmos o ID, ele usa o nosso).
+    const dbItem = {
+      id: item.id,
+      type: item.type,
+      description: item.description,
+      amount: item.amount,
+      date: item.date,
+      month_year: item.monthYear,
+      created_at: item.createdAt
+    };
+
+    const { error } = await supabase
+      .from('expenses')
+      .insert([dbItem]);
+
+    if (error) {
+      console.error('Erro ao salvar:', error);
+      throw error;
     }
   },
 
-  add: (item: ExpenseItem): ExpenseItem[] => {
-    const items = StorageService.getAll();
-    const newItems = [...items, item];
-    StorageService.save(newItems);
-    return newItems;
+  update: async (updatedItem: ExpenseItem): Promise<void> => {
+    const dbItem = {
+      type: updatedItem.type,
+      description: updatedItem.description,
+      amount: updatedItem.amount,
+      date: updatedItem.date,
+      month_year: updatedItem.monthYear,
+      // created_at geralmente não muda
+    };
+
+    const { error } = await supabase
+      .from('expenses')
+      .update(dbItem)
+      .eq('id', updatedItem.id);
+
+    if (error) {
+      console.error('Erro ao atualizar:', error);
+      throw error;
+    }
   },
 
-  update: (updatedItem: ExpenseItem): ExpenseItem[] => {
-    const items = StorageService.getAll();
-    const newItems = items.map((item) =>
-      item.id === updatedItem.id ? updatedItem : item
-    );
-    StorageService.save(newItems);
-    return newItems;
-  },
+  delete: async (id: string): Promise<void> => {
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id);
 
-  delete: (id: string): ExpenseItem[] => {
-    const items = StorageService.getAll();
-    const newItems = items.filter((item) => item.id !== id);
-    StorageService.save(newItems);
-    return newItems;
-  },
-  
-  getByType: (type: ExpenseType): ExpenseItem[] => {
-      const items = StorageService.getAll();
-      return items.filter(i => i.type === type);
+    if (error) {
+      console.error('Erro ao deletar:', error);
+      throw error;
+    }
   }
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2 } from 'lucide-react';
 import { ExpenseType, ExpenseItem } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card, Badge } from './UI';
@@ -12,6 +12,8 @@ interface ExpenseModuleProps {
 
 export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, description }) => {
   const [items, setItems] = useState<ExpenseItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -23,8 +25,20 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [monthYear, setMonthYear] = useState('');
 
   // Load data
+  const loadItems = async () => {
+    setIsLoading(true);
+    try {
+      const data = await StorageService.getByType(type);
+      setItems(data);
+    } catch (error) {
+      console.error("Failed to load items", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setItems(StorageService.getByType(type));
+    loadItems();
   }, [type]);
 
   const handleOpenModal = (item?: ExpenseItem) => {
@@ -49,50 +63,58 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
     
-    // Naming convention logic
-    let finalDescription = desc;
-    let finalMonthYear = undefined;
+    try {
+      // Naming convention logic
+      let finalDescription = desc;
+      let finalMonthYear = undefined;
 
-    if (type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) {
-        // Enforce MM/YYYY - Description
-        // We store the components separately in state for easy editing, but combine them for description
-        // Or strictly follow the user requirement: "Format [Mês]/[Ano] - [Descrição]"
-        if (!monthYear.match(/^\d{2}\/\d{4}$/)) {
-            alert('Formato de Mês/Ano inválido. Use MM/AAAA.');
-            return;
-        }
-        finalDescription = `${monthYear} - ${desc}`;
-        finalMonthYear = monthYear;
+      if (type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) {
+          if (!monthYear.match(/^\d{2}\/\d{4}$/)) {
+              alert('Formato de Mês/Ano inválido. Use MM/AAAA.');
+              setIsSaving(false);
+              return;
+          }
+          finalDescription = `${monthYear} - ${desc}`;
+          finalMonthYear = monthYear;
+      }
+
+      const itemPayload: ExpenseItem = {
+        id: editingId || crypto.randomUUID(),
+        type,
+        description: finalDescription,
+        amount: parseFloat(amount),
+        date,
+        monthYear: finalMonthYear,
+        createdAt: Date.now(),
+      };
+
+      if (editingId) {
+        await StorageService.update(itemPayload);
+      } else {
+        await StorageService.add(itemPayload);
+      }
+      
+      await loadItems(); // Refresh list from server
+      setIsModalOpen(false);
+    } catch (error) {
+      alert('Erro ao salvar. Verifique o console.');
+    } finally {
+      setIsSaving(false);
     }
-
-    const itemPayload: ExpenseItem = {
-      id: editingId || crypto.randomUUID(),
-      type,
-      description: finalDescription,
-      amount: parseFloat(amount),
-      date,
-      monthYear: finalMonthYear,
-      createdAt: Date.now(),
-    };
-
-    let newItems: ExpenseItem[];
-    if (editingId) {
-      newItems = StorageService.update(itemPayload);
-    } else {
-      newItems = StorageService.add(itemPayload);
-    }
-    
-    setItems(newItems.filter(i => i.type === type));
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir este item?')) {
-      const newItems = StorageService.delete(id);
-      setItems(newItems.filter(i => i.type === type));
+      try {
+        await StorageService.delete(id);
+        setItems(prev => prev.filter(i => i.id !== id));
+      } catch (error) {
+        alert('Erro ao excluir item.');
+      }
     }
   };
 
@@ -122,19 +144,19 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-none">
           <p className="text-indigo-100 font-medium text-sm">Total Acumulado</p>
           <h3 className="text-3xl font-bold mt-1">
-            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
+            {isLoading ? '...' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}
           </h3>
         </Card>
         <Card>
            <p className="text-gray-500 font-medium text-sm">Registros</p>
-           <h3 className="text-3xl font-bold mt-1 text-gray-800">{items.length}</h3>
+           <h3 className="text-3xl font-bold mt-1 text-gray-800">{isLoading ? '...' : items.length}</h3>
         </Card>
         <Card>
             <p className="text-gray-500 font-medium text-sm">Média por Item</p>
             <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                {items.length > 0 
+                {isLoading ? '...' : (items.length > 0 
                     ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total / items.length)
-                    : 'R$ 0,00'}
+                    : 'R$ 0,00')}
             </h3>
         </Card>
       </div>
@@ -163,7 +185,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredItems.length === 0 ? (
+              {isLoading ? (
+                 <tr>
+                    <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
+                        <div className="flex justify-center items-center gap-2">
+                             <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                             Carregando dados...
+                        </div>
+                    </td>
+                </tr>
+              ) : filteredItems.length === 0 ? (
                 <tr>
                     <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
                         Nenhum registro encontrado.
@@ -203,7 +234,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => !isSaving && setIsModalOpen(false)}
         title={editingId ? 'Editar Item' : 'Adicionar Novo Item'}
       >
         <form onSubmit={handleSave} className="space-y-4">
@@ -216,6 +247,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 pattern="\d{2}/\d{4}"
                 required
                 className="font-mono"
+                disabled={isSaving}
             />
           )}
 
@@ -225,6 +257,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             onChange={(e) => setDesc(e.target.value)}
             placeholder={type === ExpenseType.NOTE ? "Ex: Conserto do portão" : "Ex: Limpeza, Manutenção"}
             required
+            disabled={isSaving}
           />
           
           <div className="grid grid-cols-2 gap-4">
@@ -236,6 +269,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
+                disabled={isSaving}
             />
             <Input
                 label="Data do Registro"
@@ -243,15 +277,20 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
+                disabled={isSaving}
             />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} disabled={isSaving}>
               Cancelar
             </Button>
-            <Button type="submit">
-              {editingId ? 'Salvar Alterações' : 'Adicionar'}
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? (
+                  <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Salvando...
+                  </span>
+              ) : (editingId ? 'Salvar Alterações' : 'Adicionar')}
             </Button>
           </div>
         </form>

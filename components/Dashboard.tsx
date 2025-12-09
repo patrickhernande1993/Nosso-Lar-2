@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { Loader2 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { ExpenseType } from '../types';
 import { Card } from './UI';
@@ -9,28 +10,47 @@ const COLORS = ['#4F46E5', '#10B981', '#F59E0B'];
 export const Dashboard: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const items = StorageService.getAll();
-    
-    const installments = items.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
-    const notes = items.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
-    const fees = items.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
+    const fetchData = async () => {
+      try {
+        const items = await StorageService.getAll();
+        
+        const installments = items.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
+        const notes = items.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
+        const fees = items.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
 
-    setTotal(installments + notes + fees);
+        setTotal(installments + notes + fees);
 
-    setData([
-      { name: 'Parcelas', value: installments, type: ExpenseType.INSTALLMENT },
-      { name: 'Notas Promissórias', value: notes, type: ExpenseType.NOTE },
-      { name: 'Taxas de Condomínio', value: fees, type: ExpenseType.FEE },
-    ]);
+        setData([
+          { name: 'Parcelas', value: installments, type: ExpenseType.INSTALLMENT },
+          { name: 'Notas Promissórias', value: notes, type: ExpenseType.NOTE },
+          { name: 'Taxas de Condomínio', value: fees, type: ExpenseType.FEE },
+        ]);
+      } catch (e) {
+        console.error("Error loading dashboard", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
+
+  if (isLoading) {
+      return (
+          <div className="flex h-64 w-full items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+          </div>
+      );
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Visão Geral</h2>
-        <p className="text-gray-500">Resumo financeiro do condomínio.</p>
+        <p className="text-gray-500">Resumo financeiro do condomínio (Base Supabase).</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
