@@ -1,0 +1,5 @@
+{
+  "name": "CondoManager",
+  "description": "Uma aplicação web responsiva para gerenciamento de despesas de condomínio, parcelas e notas promissórias com armazenamento local.",
+  "requestFramePermissions": []
+}
