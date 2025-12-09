@@ -14,6 +14,7 @@ export interface ExpenseItem {
   date: string; // ISO String or YYYY-MM-DD
   monthYear?: string; // Format MM/YYYY for recurring items
   createdAt: number;
+  receiptUrl?: string; // URL pública do comprovante
 }
 
 export interface NavigationItem {

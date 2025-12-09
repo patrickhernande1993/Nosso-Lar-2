@@ -1,6 +1,33 @@
 import { ExpenseItem, ExpenseType } from '../types';
 import { supabase } from '../lib/supabase';
 
+// Função auxiliar para upload de arquivo
+const uploadReceipt = async (file: File): Promise<string | null> => {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('receipts')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      console.error('Erro no upload:', uploadError);
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('receipts')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  } catch (error) {
+    console.error('Erro ao fazer upload do comprovante:', error);
+    return null;
+  }
+};
+
 export const StorageService = {
   getAll: async (): Promise<ExpenseItem[]> => {
     const { data, error } = await supabase
@@ -12,7 +39,6 @@ export const StorageService = {
       return [];
     }
 
-    // Mapear snake_case do banco para camelCase da aplicação
     return data.map((item: any) => ({
       id: item.id,
       type: item.type as ExpenseType,
@@ -20,7 +46,8 @@ export const StorageService = {
       amount: item.amount,
       date: item.date,
       monthYear: item.month_year,
-      createdAt: item.created_at
+      createdAt: item.created_at,
+      receiptUrl: item.receipt_url // Mapeamento do novo campo
     }));
   },
 
@@ -42,14 +69,19 @@ export const StorageService = {
       amount: item.amount,
       date: item.date,
       monthYear: item.month_year,
-      createdAt: item.created_at
+      createdAt: item.created_at,
+      receiptUrl: item.receipt_url
     }));
   },
 
-  add: async (item: ExpenseItem): Promise<void> => {
-    // Preparar objeto para o banco (snake_case e remover ID para deixar o banco gerar se for novo, 
-    // mas se o app gera UUID, podemos passar. O script SQL usa default gen_random_uuid, 
-    // mas se passarmos o ID, ele usa o nosso).
+  add: async (item: ExpenseItem, file?: File): Promise<void> => {
+    let receiptUrl = item.receiptUrl;
+
+    if (file) {
+      const uploadedUrl = await uploadReceipt(file);
+      if (uploadedUrl) receiptUrl = uploadedUrl;
+    }
+
     const dbItem = {
       id: item.id,
       type: item.type,
@@ -57,7 +89,8 @@ export const StorageService = {
       amount: item.amount,
       date: item.date,
       month_year: item.monthYear,
-      created_at: item.createdAt
+      created_at: item.createdAt,
+      receipt_url: receiptUrl
     };
 
     const { error } = await supabase
@@ -70,14 +103,21 @@ export const StorageService = {
     }
   },
 
-  update: async (updatedItem: ExpenseItem): Promise<void> => {
+  update: async (updatedItem: ExpenseItem, file?: File): Promise<void> => {
+    let receiptUrl = updatedItem.receiptUrl;
+
+    if (file) {
+      const uploadedUrl = await uploadReceipt(file);
+      if (uploadedUrl) receiptUrl = uploadedUrl;
+    }
+
     const dbItem = {
       type: updatedItem.type,
       description: updatedItem.description,
       amount: updatedItem.amount,
       date: updatedItem.date,
       month_year: updatedItem.monthYear,
-      // created_at geralmente não muda
+      receipt_url: receiptUrl
     };
 
     const { error } = await supabase
@@ -92,6 +132,8 @@ export const StorageService = {
   },
 
   delete: async (id: string): Promise<void> => {
+    // Nota: O ideal seria deletar o arquivo do Storage também, 
+    // mas para simplificar vamos apenas remover o registro do banco por enquanto.
     const { error } = await supabase
       .from('expenses')
       .delete()

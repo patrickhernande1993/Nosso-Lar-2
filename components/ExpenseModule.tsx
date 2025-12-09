@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink } from 'lucide-react';
 import { ExpenseType, ExpenseItem } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card, Badge } from './UI';
@@ -23,6 +23,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
   const [monthYear, setMonthYear] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
+  const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | undefined>(undefined);
 
   // Load data
   const loadItems = async () => {
@@ -42,17 +44,20 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   }, [type]);
 
   const handleOpenModal = (item?: ExpenseItem) => {
+    setSelectedFile(undefined); // Reset file input
     if (item) {
       setEditingId(item.id);
       setDesc(item.description);
       setAmount(item.amount.toString());
       setDate(item.date);
       setMonthYear(item.monthYear || '');
+      setExistingReceiptUrl(item.receiptUrl);
     } else {
       setEditingId(null);
       setDesc('');
       setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
+      setExistingReceiptUrl(undefined);
       
       // Auto-fill month/year if needed
       const now = new Date();
@@ -90,12 +95,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         date,
         monthYear: finalMonthYear,
         createdAt: Date.now(),
+        receiptUrl: existingReceiptUrl // Mantém a URL antiga se não houver novo arquivo
       };
 
       if (editingId) {
-        await StorageService.update(itemPayload);
+        await StorageService.update(itemPayload, selectedFile);
       } else {
-        await StorageService.add(itemPayload);
+        await StorageService.add(itemPayload, selectedFile);
       }
       
       await loadItems(); // Refresh list from server
@@ -181,13 +187,14 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Comprovante</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {isLoading ? (
                  <tr>
-                    <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
+                    <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
                         <div className="flex justify-center items-center gap-2">
                              <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                              Carregando dados...
@@ -196,7 +203,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                    <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
+                    <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
                         Nenhum registro encontrado.
                     </td>
                 </tr>
@@ -214,6 +221,21 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {item.receiptUrl ? (
+                            <a 
+                                href={item.receiptUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center text-indigo-600 hover:text-indigo-800 bg-indigo-50 p-1.5 rounded-full transition-colors"
+                                title="Ver Comprovante"
+                            >
+                                <Paperclip className="w-4 h-4" />
+                            </a>
+                        ) : (
+                            <span className="text-gray-300">-</span>
+                        )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button onClick={() => handleOpenModal(item)} className="text-indigo-600 hover:text-indigo-900 mr-4">
@@ -279,6 +301,32 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 required
                 disabled={isSaving}
             />
+          </div>
+
+          <div>
+             <label className="block text-sm font-medium text-gray-700 mb-1">
+                Comprovante (Imagem/PDF)
+             </label>
+             <div className="mt-1 flex items-center gap-2">
+                <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0])}
+                    className="block w-full text-sm text-slate-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-indigo-50 file:text-indigo-700
+                        hover:file:bg-indigo-100"
+                    disabled={isSaving}
+                />
+                {existingReceiptUrl && !selectedFile && (
+                    <a href={existingReceiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> Atual
+                    </a>
+                )}
+             </div>
+             <p className="text-xs text-gray-400 mt-1">Opcional. Substitui o atual se enviado.</p>
           </div>
 
           <div className="pt-4 flex justify-end gap-3">
