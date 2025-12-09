@@ -106,8 +106,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       
       await loadItems(); // Refresh list from server
       setIsModalOpen(false);
-    } catch (error) {
-      alert('Erro ao salvar. Verifique o console.');
+    } catch (error: any) {
+      console.error(error);
+      if (error?.message?.includes('new row violates row-level security policy') || error?.statusCode === '42501') {
+          alert('Erro de Permissão: Não foi possível salvar o arquivo. Verifique se as Policies do Supabase Storage foram criadas corretamente.');
+      } else {
+          alert('Erro ao salvar: ' + (error?.message || 'Verifique o console.'));
+      }
     } finally {
       setIsSaving(false);
     }

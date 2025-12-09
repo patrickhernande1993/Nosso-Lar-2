@@ -4,16 +4,26 @@ import { supabase } from '../lib/supabase';
 // Função auxiliar para upload de arquivo
 const uploadReceipt = async (file: File): Promise<string | null> => {
   try {
+    // Sanitizar o nome do arquivo (remove acentos e caracteres especiais)
     const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const cleanFileName = file.name
+        .replace(/[^a-zA-Z0-9]/g, '') // Remove tudo que não for letra ou número
+        .substring(0, 20); // Limita tamanho
+        
+    const fileName = `${Date.now()}-${cleanFileName}.${fileExt}`;
     const filePath = `${fileName}`;
+
+    console.log('Iniciando upload:', filePath);
 
     const { error: uploadError } = await supabase.storage
       .from('receipts')
-      .upload(filePath, file);
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
 
     if (uploadError) {
-      console.error('Erro no upload:', uploadError);
+      console.error('Erro detalhado do Supabase Storage:', uploadError);
       throw uploadError;
     }
 
@@ -21,6 +31,7 @@ const uploadReceipt = async (file: File): Promise<string | null> => {
       .from('receipts')
       .getPublicUrl(filePath);
 
+    console.log('Upload sucesso, URL:', data.publicUrl);
     return data.publicUrl;
   } catch (error) {
     console.error('Erro ao fazer upload do comprovante:', error);
@@ -47,7 +58,7 @@ export const StorageService = {
       date: item.date,
       monthYear: item.month_year,
       createdAt: item.created_at,
-      receiptUrl: item.receipt_url // Mapeamento do novo campo
+      receiptUrl: item.receipt_url
     }));
   },
 
@@ -78,8 +89,13 @@ export const StorageService = {
     let receiptUrl = item.receiptUrl;
 
     if (file) {
+      console.log('Arquivo detectado para upload...');
       const uploadedUrl = await uploadReceipt(file);
-      if (uploadedUrl) receiptUrl = uploadedUrl;
+      if (uploadedUrl) {
+          receiptUrl = uploadedUrl;
+      } else {
+          console.warn('Upload falhou, salvando registro sem anexo.');
+      }
     }
 
     const dbItem = {
@@ -98,7 +114,7 @@ export const StorageService = {
       .insert([dbItem]);
 
     if (error) {
-      console.error('Erro ao salvar:', error);
+      console.error('Erro ao salvar no banco:', error);
       throw error;
     }
   },
@@ -107,6 +123,7 @@ export const StorageService = {
     let receiptUrl = updatedItem.receiptUrl;
 
     if (file) {
+      console.log('Arquivo detectado para atualização...');
       const uploadedUrl = await uploadReceipt(file);
       if (uploadedUrl) receiptUrl = uploadedUrl;
     }
@@ -126,14 +143,12 @@ export const StorageService = {
       .eq('id', updatedItem.id);
 
     if (error) {
-      console.error('Erro ao atualizar:', error);
+      console.error('Erro ao atualizar no banco:', error);
       throw error;
     }
   },
 
   delete: async (id: string): Promise<void> => {
-    // Nota: O ideal seria deletar o arquivo do Storage também, 
-    // mas para simplificar vamos apenas remover o registro do banco por enquanto.
     const { error } = await supabase
       .from('expenses')
       .delete()
