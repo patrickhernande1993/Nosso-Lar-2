@@ -1,5 +1,5 @@
 {
-  "name": "CondoManager",
+  "name": "Nosso Lar",
   "description": "Uma aplicação web responsiva para gerenciamento de despesas de condomínio, parcelas e notas promissórias com armazenamento local.",
   "requestFramePermissions": []
 }

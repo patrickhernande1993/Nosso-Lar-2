@@ -5,7 +5,7 @@ import { StorageService } from '../services/storage';
 import { ExpenseType } from '../types';
 import { Card } from './UI';
 
-const COLORS = ['#4F46E5', '#10B981', '#F59E0B'];
+const COLORS = ['#6366f1', '#10b981', '#f59e0b']; // Indigo-500, Emerald-500, Amber-500 (Cores mais vivas)
 
 export const Dashboard: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
@@ -48,25 +48,24 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Visão Geral</h2>
-        <p className="text-gray-500">Resumo financeiro do condomínio (Base Supabase).</p>
-      </div>
-
+      {/* Mobile Title (Duplicate of Layout but for flow, only visible on mobile inside content if needed, but Layout handles it. Keeping generic structure) */}
+      
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-            <h3 className="text-lg font-semibold mb-4">Distribuição de Despesas</h3>
+        <Card className="lg:col-span-2 border-indigo-50 shadow-indigo-100">
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Distribuição de Despesas</h3>
+            <p className="text-sm text-slate-400 mb-6">Visualização comparativa por categoria</p>
             <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                         <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={140} tick={{fontSize: 12}} />
+                        <YAxis dataKey="name" type="category" width={140} tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
                         <Tooltip 
+                            cursor={{fill: '#f8fafc'}}
                             formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)}
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                         />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                        <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={32}>
                             {data.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
@@ -76,8 +75,9 @@ export const Dashboard: React.FC = () => {
             </div>
         </Card>
 
-        <Card>
-            <h3 className="text-lg font-semibold mb-4">Total Consolidado</h3>
+        <Card className="border-indigo-50 shadow-indigo-100">
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Total Consolidado</h3>
+            <p className="text-sm text-slate-400 mb-6">Soma de todas as categorias</p>
             <div className="h-48 w-full flex items-center justify-center relative">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -87,6 +87,7 @@ export const Dashboard: React.FC = () => {
                             outerRadius={80}
                             paddingAngle={5}
                             dataKey="value"
+                            stroke="none"
                         >
                             {data.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -95,20 +96,21 @@ export const Dashboard: React.FC = () => {
                         <Tooltip formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} />
                     </PieChart>
                 </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <span className="font-bold text-gray-700">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
+                    <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total</span>
+                    <span className="font-bold text-2xl text-slate-800">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(total)}
                     </span>
                 </div>
             </div>
-            <div className="space-y-3 mt-4">
+            <div className="space-y-4 mt-6">
                 {data.map((item, idx) => (
-                    <div key={item.name} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx] }}></div>
-                            <span className="text-gray-600">{item.name}</span>
+                    <div key={item.name} className="flex items-center justify-between text-sm group">
+                        <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full ring-2 ring-offset-1 ring-white" style={{ backgroundColor: COLORS[idx] }}></div>
+                            <span className="text-slate-500 group-hover:text-slate-700 transition-colors">{item.name}</span>
                         </div>
-                        <span className="font-medium">
+                        <span className="font-semibold text-slate-700 bg-slate-50 px-2 py-1 rounded-md">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
                         </span>
                     </div>
