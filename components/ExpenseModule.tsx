@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye } from 'lucide-react';
-import { ExpenseType, ExpenseItem } from '../types';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, CheckCircle2, Clock } from 'lucide-react';
+import { ExpenseType, ExpenseItem, ExpenseStatus } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card, Badge } from './UI';
 
@@ -23,6 +23,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
   const [monthYear, setMonthYear] = useState('');
+  const [status, setStatus] = useState<ExpenseStatus>('PENDING');
   const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
   const [existingReceiptUrl, setExistingReceiptUrl] = useState<string | undefined>(undefined);
 
@@ -51,12 +52,14 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       setAmount(item.amount.toString());
       setDate(item.date);
       setMonthYear(item.monthYear || '');
+      setStatus(item.status);
       setExistingReceiptUrl(item.receiptUrl);
     } else {
       setEditingId(null);
       setDesc('');
       setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
+      setStatus('PENDING');
       setExistingReceiptUrl(undefined);
       
       // Auto-fill month/year if needed
@@ -95,7 +98,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         date,
         monthYear: finalMonthYear,
         createdAt: Date.now(),
-        receiptUrl: existingReceiptUrl // Mantém a URL antiga se não houver novo arquivo
+        receiptUrl: existingReceiptUrl, // Mantém a URL antiga se não houver novo arquivo
+        status: status
       };
 
       if (editingId) {
@@ -108,8 +112,12 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       setIsModalOpen(false);
     } catch (error: any) {
       console.error(error);
-      if (error?.message?.includes('policy') || error?.message?.includes('permission') || error?.code === '42501') {
-          alert('ERRO DE PERMISSÃO: O Supabase bloqueou o upload.\n\nVocê precisa rodar o script SQL fornecido (supabase_setup.sql) no painel do Supabase para liberar o acesso público ao Bucket "receipts".');
+      const isBucketError = error?.message?.includes('Bucket not found');
+      const isPolicyError = error?.message?.includes('policy') || error?.message?.includes('permission') || error?.code === '42501';
+
+      if (isBucketError || isPolicyError) {
+          const detail = isBucketError ? 'O Bucket "receipts" não foi encontrado.' : 'Permissão de upload negada.';
+          alert(`⚠️ ERRO DE CONFIGURAÇÃO NO SUPABASE ⚠️\n\n${detail}\n\nSOLUÇÃO:\n1. Vá ao SQL Editor do Supabase.\n2. Copie e execute o conteúdo do arquivo "supabase_setup.sql" (incluído no projeto).`);
       } else {
           alert('Erro ao salvar: ' + (error?.message || 'Verifique o console.'));
       }
@@ -137,6 +145,26 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
 
   const total = useMemo(() => items.reduce((acc, curr) => acc + curr.amount, 0), [items]);
 
+  // Status Badge Component Helper
+  const StatusBadge = ({ status }: { status: ExpenseStatus }) => {
+      if (status === 'PAID') {
+          return (
+              <Badge color="bg-green-100 text-green-700 ring-1 ring-green-600/20">
+                  <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Pago
+                  </span>
+              </Badge>
+          );
+      }
+      return (
+          <Badge color="bg-amber-100 text-amber-700 ring-1 ring-amber-600/20">
+              <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Em Aberto
+              </span>
+          </Badge>
+      );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -163,11 +191,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
            <h3 className="text-3xl font-bold mt-1 text-gray-800">{isLoading ? '...' : items.length}</h3>
         </Card>
         <Card>
-            <p className="text-gray-500 font-medium text-sm">Média por Item</p>
-            <h3 className="text-3xl font-bold mt-1 text-gray-800">
-                {isLoading ? '...' : (items.length > 0 
-                    ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total / items.length)
-                    : 'R$ 0,00')}
+            <p className="text-gray-500 font-medium text-sm">Status (Pendentes)</p>
+            <h3 className="text-3xl font-bold mt-1 text-amber-500">
+                {isLoading ? '...' : items.filter(i => i.status === 'PENDING').length}
             </h3>
         </Card>
       </div>
@@ -191,6 +217,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
               <tr>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
                 <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Comprovante</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
@@ -199,7 +226,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             <tbody className="bg-white divide-y divide-gray-200">
               {isLoading ? (
                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
                         <div className="flex justify-center items-center gap-2">
                              <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                              Carregando dados...
@@ -208,7 +235,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
                         Nenhum registro encontrado.
                     </td>
                 </tr>
@@ -223,6 +250,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(item.date).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <StatusBadge status={item.status} />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
@@ -267,6 +297,36 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         title={editingId ? 'Editar Item' : 'Adicionar Novo Item'}
       >
         <form onSubmit={handleSave} className="space-y-4">
+          
+          {/* Status Selection */}
+          <div className="bg-gray-50 p-2 rounded-lg flex items-center justify-center gap-2">
+            <span className="text-sm text-gray-600 font-medium mr-2">Status:</span>
+            <div className="flex gap-2">
+                <button
+                    type="button"
+                    onClick={() => setStatus('PENDING')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        status === 'PENDING' 
+                        ? 'bg-amber-100 text-amber-700 ring-2 ring-amber-500' 
+                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                >
+                    Em Aberto
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setStatus('PAID')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        status === 'PAID' 
+                        ? 'bg-green-100 text-green-700 ring-2 ring-green-500' 
+                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                >
+                    Pago
+                </button>
+            </div>
+          </div>
+
           {(type === ExpenseType.INSTALLMENT || type === ExpenseType.FEE) && (
              <Input
                 label="Mês/Ano Referência (MM/AAAA)"

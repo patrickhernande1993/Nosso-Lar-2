@@ -1,4 +1,4 @@
-import { ExpenseItem, ExpenseType } from '../types';
+import { ExpenseItem, ExpenseType, ExpenseStatus } from '../types';
 import { supabase } from '../lib/supabase';
 
 // Função auxiliar para upload de arquivo
@@ -58,7 +58,8 @@ export const StorageService = {
       date: item.date,
       monthYear: item.month_year,
       createdAt: item.created_at,
-      receiptUrl: item.receipt_url
+      receiptUrl: item.receipt_url,
+      status: item.status || 'PENDING' // Fallback para registros antigos
     }));
   },
 
@@ -81,7 +82,8 @@ export const StorageService = {
       date: item.date,
       monthYear: item.month_year,
       createdAt: item.created_at,
-      receiptUrl: item.receipt_url
+      receiptUrl: item.receipt_url,
+      status: item.status || 'PENDING'
     }));
   },
 
@@ -107,7 +109,8 @@ export const StorageService = {
       date: item.date,
       month_year: item.monthYear,
       created_at: item.createdAt,
-      receipt_url: receiptUrl
+      receipt_url: receiptUrl,
+      status: item.status
     };
 
     const { error } = await supabase
@@ -139,7 +142,8 @@ export const StorageService = {
       amount: updatedItem.amount,
       date: updatedItem.date,
       month_year: updatedItem.monthYear,
-      receipt_url: receiptUrl
+      receipt_url: receiptUrl,
+      status: updatedItem.status
     };
 
     const { error } = await supabase

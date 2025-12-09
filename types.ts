@@ -6,6 +6,8 @@ export enum ExpenseType {
   FEE = 'FEE', // Taxas de Condomínio
 }
 
+export type ExpenseStatus = 'PAID' | 'PENDING';
+
 export interface ExpenseItem {
   id: string;
   type: ExpenseType;
@@ -15,6 +17,7 @@ export interface ExpenseItem {
   monthYear?: string; // Format MM/YYYY for recurring items
   createdAt: number;
   receiptUrl?: string; // URL pública do comprovante
+  status: ExpenseStatus; // Novo campo de status
 }
 
 export interface NavigationItem {
