@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, Home, FileText, CreditCard, DollarSign, Heart, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList } from 'lucide-react';
+import { Menu, X, Home, FileText, CreditCard, DollarSign, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList, Heart } from 'lucide-react';
 import { ExpenseType, NavigationItem } from '../types';
 
 const NAV_ITEMS: NavigationItem[] = [
@@ -44,7 +44,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   };
 
   const getPageTitle = () => {
-    // Busca recursiva pelo título da página atual
     for (const item of NAV_ITEMS) {
       if (item.path === location.pathname) return item.label;
       if (item.children) {
@@ -56,9 +55,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 overflow-hidden">
       {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-gray-100 p-4 flex justify-between items-center sticky top-0 z-40 shadow-sm h-16">
+      <div className="md:hidden bg-white border-b border-gray-100 p-4 flex justify-between items-center sticky top-0 z-40 shadow-sm h-16 flex-shrink-0">
         <h1 className="font-bold text-indigo-900 text-lg flex items-center gap-2">
             <Heart className="w-5 h-5 text-red-500 fill-red-500" /> Nosso Lar
         </h1>
@@ -70,11 +69,15 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Sidebar */}
       <aside 
         className={`
-          fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-100 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex-shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)]
+          fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-100 
+          transform transition-transform duration-300 ease-in-out 
+          md:translate-x-0 md:relative md:h-screen
+          flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)]
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="p-6 border-b border-dashed border-gray-100 flex items-center gap-3 h-20 md:h-auto">
+        {/* Header da Sidebar (Fixo no Topo) */}
+        <div className="p-6 border-b border-dashed border-gray-100 flex items-center gap-3 h-20 flex-shrink-0">
             <div className="bg-indigo-50 rounded-xl p-2">
                 <Heart className="text-red-500 fill-red-500 w-6 h-6" />
             </div>
@@ -88,12 +91,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </button>
         </div>
 
-        <nav className="p-4 space-y-1 mt-2 overflow-y-auto max-h-[calc(100vh-180px)] scrollbar-thin scrollbar-thumb-gray-200">
+        {/* Navegação (Flexível com Scroll) */}
+        <nav className="p-4 space-y-1 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
           {NAV_ITEMS.map((item) => {
             if (item.children) {
-              // Renderiza Item com Submenu
               const isExpanded = expandedMenus[item.label];
-              // Verifica se algum filho está ativo para destacar o pai
               const isChildActive = item.children.some(child => child.path === location.pathname);
 
               return (
@@ -113,7 +115,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                     {isExpanded ? <ChevronDown className="w-4 h-4 opacity-50" /> : <ChevronRight className="w-4 h-4 opacity-50" />}
                   </button>
                   
-                  {/* Submenu Area */}
                   {isExpanded && (
                     <div className="mt-1 ml-4 pl-4 border-l border-gray-100 space-y-1">
                       {item.children.map(child => (
@@ -144,7 +145,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 </div>
               );
             } else {
-              // Renderiza Item Simples
               return (
                 <NavLink
                   key={item.path}
@@ -170,9 +170,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               );
             }
           })}
+          
+          {/* Espaçamento extra no final para garantir scroll confortável */}
+          <div className="h-4"></div>
         </nav>
         
-        <div className="fixed bottom-0 w-64 left-0 p-6 border-t border-gray-50 bg-white z-30 hidden md:block">
+        {/* Rodapé da Sidebar (Fixo no Fundo do Flex) */}
+        <div className="p-6 border-t border-gray-50 bg-white flex-shrink-0 z-30">
             <div className="bg-indigo-50 rounded-lg p-4 text-center">
                 <p className="text-xs text-indigo-400 font-medium">Patrick & Isabelly ❤️</p>
                 <p className="text-[10px] text-indigo-300 mt-1">Feito com carinho</p>
