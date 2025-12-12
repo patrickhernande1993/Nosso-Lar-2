@@ -2,6 +2,7 @@ import React from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ExpenseModule } from './components/ExpenseModule';
+import { GuestListModule } from './components/GuestListModule';
 import { Dashboard } from './components/Dashboard';
 import { ExpenseType } from './types';
 
@@ -65,6 +66,10 @@ const App: React.FC = () => {
           />
 
           {/* Rotas de Casamento */}
+          <Route 
+            path="/guests" 
+            element={<GuestListModule />} 
+          />
           <Route 
             path="/event-space" 
             element={

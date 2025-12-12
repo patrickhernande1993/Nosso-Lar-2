@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, Home, FileText, CreditCard, DollarSign, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList, Heart } from 'lucide-react';
+import { Menu, X, Home, FileText, CreditCard, DollarSign, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList, Heart, Users } from 'lucide-react';
 import { ExpenseType, NavigationItem } from '../types';
 
 const NAV_ITEMS: NavigationItem[] = [
@@ -24,6 +24,7 @@ const NAV_ITEMS: NavigationItem[] = [
     label: 'Casamento',
     icon: <HeartHandshake className="w-5 h-5" />,
     children: [
+      { label: 'Lista de Convidados', path: '/guests', icon: <Users className="w-4 h-4" /> },
       { label: 'Espaço Evento', path: '/event-space', icon: <MapPin className="w-4 h-4" />, type: ExpenseType.EVENT_SPACE },
       { label: 'Buffet', path: '/buffet', icon: <Utensils className="w-4 h-4" />, type: ExpenseType.BUFFET },
       { label: 'Cerimonialista', path: '/ceremonialist', icon: <ClipboardList className="w-4 h-4" />, type: ExpenseType.CEREMONIALIST },

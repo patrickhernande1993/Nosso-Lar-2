@@ -37,3 +37,14 @@ export interface NavigationItem {
   type?: ExpenseType;
   children?: NavigationItem[];
 }
+
+// --- Tipos para Lista de Convidados ---
+
+export type GuestSide = 'BRIDE' | 'GROOM';
+
+export interface Guest {
+  id: string;
+  name: string;
+  side: GuestSide;
+  createdAt: number;
+}
