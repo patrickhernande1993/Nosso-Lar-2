@@ -19,8 +19,8 @@ const App: React.FC = () => {
             element={
               <ExpenseModule 
                 type={ExpenseType.INSTALLMENT} 
-                title="Parcelas" 
-                description="Gerencie as despesas recorrentes mensais do imóvel."
+                title="Financiamento Apartamento" 
+                description="Gerencie as parcelas do financiamento do imóvel."
               />
             } 
           />

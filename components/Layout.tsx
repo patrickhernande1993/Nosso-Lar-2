@@ -13,7 +13,7 @@ const NAV_ITEMS: NavigationItem[] = [
     label: 'Apartamento',
     icon: <Building2 className="w-5 h-5" />,
     children: [
-      { label: 'Parcelas', path: '/installments', icon: <CreditCard className="w-4 h-4" />, type: ExpenseType.INSTALLMENT },
+      { label: 'Financiamento Ap.', path: '/installments', icon: <CreditCard className="w-4 h-4" />, type: ExpenseType.INSTALLMENT },
       { label: 'Notas Promissórias', path: '/notes', icon: <FileText className="w-4 h-4" />, type: ExpenseType.NOTE },
       { label: 'Taxas de Condomínio', path: '/fees', icon: <DollarSign className="w-4 h-4" />, type: ExpenseType.FEE },
       { label: 'Móveis Planejados', path: '/furniture', icon: <Sofa className="w-4 h-4" />, type: ExpenseType.FURNITURE },
