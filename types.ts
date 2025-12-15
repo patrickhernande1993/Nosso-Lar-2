@@ -46,5 +46,6 @@ export interface Guest {
   id: string;
   name: string;
   side: GuestSide;
+  isChild: boolean; // Indica se é criança
   createdAt: number;
 }

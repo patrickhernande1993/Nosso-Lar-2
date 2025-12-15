@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, User, Trash2, Plus, Search, Loader2 } from 'lucide-react';
+import { Users, User, Trash2, Plus, Search, Loader2, Baby, CheckSquare, Square } from 'lucide-react';
 import { Guest, GuestSide } from '../types';
 import { GuestService } from '../services/guestStorage';
 import { Button, Input, Card, Badge } from './UI';
@@ -12,6 +12,7 @@ export const GuestListModule: React.FC = () => {
   // Inputs
   const [newName, setNewName] = useState('');
   const [selectedSide, setSelectedSide] = useState<GuestSide>('BRIDE');
+  const [isChild, setIsChild] = useState(false); // Novo estado para criança
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSide, setFilterSide] = useState<'ALL' | GuestSide>('ALL');
 
@@ -37,8 +38,9 @@ export const GuestListModule: React.FC = () => {
 
     setIsSaving(true);
     try {
-      await GuestService.add(newName, selectedSide);
+      await GuestService.add(newName, selectedSide, isChild);
       setNewName('');
+      setIsChild(false); // Resetar checkbox
       // Recarrega para garantir sincronia
       await loadGuests(); 
     } catch (error: any) {
@@ -59,14 +61,20 @@ export const GuestListModule: React.FC = () => {
     }
   };
 
-  // Contadores
+  // Contadores Refatorados
   const stats = useMemo(() => {
-    const brideCount = guests.filter(g => g.side === 'BRIDE').length;
-    const groomCount = guests.filter(g => g.side === 'GROOM').length;
+    // Separa adultos e crianças
+    const adults = guests.filter(g => !g.isChild);
+    const children = guests.filter(g => g.isChild);
+
+    const brideAdults = adults.filter(g => g.side === 'BRIDE').length;
+    const groomAdults = adults.filter(g => g.side === 'GROOM').length;
+
     return {
-      bride: brideCount,
-      groom: groomCount,
-      total: brideCount + groomCount
+      bride: brideAdults,
+      groom: groomAdults,
+      totalAdults: brideAdults + groomAdults,
+      children: children.length
     };
   }, [guests]);
 
@@ -89,14 +97,14 @@ export const GuestListModule: React.FC = () => {
       </div>
 
       {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-none">
           <div className="flex items-center gap-3 mb-2 opacity-90">
             <Users className="w-5 h-5" />
-            <span className="font-medium">Total Confirmado</span>
+            <span className="font-medium">Total Adultos</span>
           </div>
-          <div className="text-4xl font-bold">{stats.total}</div>
-          <div className="text-xs mt-1 opacity-75">Convidados totais</div>
+          <div className="text-4xl font-bold">{stats.totalAdults}</div>
+          <div className="text-xs mt-1 opacity-75">Confirmados (sem crianças)</div>
         </Card>
 
         <Card className="bg-white border-l-4 border-l-pink-500">
@@ -106,7 +114,7 @@ export const GuestListModule: React.FC = () => {
           </div>
           <div className="flex items-end gap-2">
              <span className="text-3xl font-bold text-gray-800">{stats.bride}</span>
-             <span className="text-xs text-gray-400 mb-1.5">pessoas</span>
+             <span className="text-xs text-gray-400 mb-1.5">adultos</span>
           </div>
         </Card>
 
@@ -117,7 +125,18 @@ export const GuestListModule: React.FC = () => {
           </div>
           <div className="flex items-end gap-2">
              <span className="text-3xl font-bold text-gray-800">{stats.groom}</span>
-             <span className="text-xs text-gray-400 mb-1.5">pessoas</span>
+             <span className="text-xs text-gray-400 mb-1.5">adultos</span>
+          </div>
+        </Card>
+
+        <Card className="bg-white border-l-4 border-l-yellow-400">
+          <div className="flex items-center gap-2 mb-2 text-yellow-600">
+            <Baby className="w-4 h-4" />
+            <span className="font-medium text-sm uppercase tracking-wide">Crianças</span>
+          </div>
+          <div className="flex items-end gap-2">
+             <span className="text-3xl font-bold text-gray-800">{stats.children}</span>
+             <span className="text-xs text-gray-400 mb-1.5">pequenos</span>
           </div>
         </Card>
       </div>
@@ -166,6 +185,22 @@ export const GuestListModule: React.FC = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* Checkbox Criança */}
+                    <button
+                        type="button"
+                        onClick={() => setIsChild(!isChild)}
+                        className="flex items-center gap-3 w-full p-2 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                        {isChild ? (
+                            <CheckSquare className="w-5 h-5 text-indigo-600" />
+                        ) : (
+                            <Square className="w-5 h-5 text-gray-300" />
+                        )}
+                        <span className={`text-sm ${isChild ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                            É criança? <span className="text-xs text-gray-400 font-normal">(Não conta como pagante)</span>
+                        </span>
+                    </button>
 
                     <Button 
                         type="submit" 
@@ -234,7 +269,14 @@ export const GuestListModule: React.FC = () => {
                                             {guest.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
-                                            <p className="font-medium text-gray-800">{guest.name}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-medium text-gray-800">{guest.name}</p>
+                                                {guest.isChild && (
+                                                    <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-1.5 rounded flex items-center gap-1">
+                                                        <Baby className="w-3 h-3" /> Criança
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
                                                 guest.side === 'BRIDE' ? 'bg-pink-50 text-pink-500' : 'bg-blue-50 text-blue-500'
                                             }`}>

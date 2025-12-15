@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Loader2, Building2, HeartHandshake, Filter, Calendar, XCircle, ChevronDown } from 'lucide-react';
+import { Loader2, Building2, HeartHandshake, Filter, Calendar, XCircle, ChevronDown, CheckCircle2, Clock } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { ExpenseType, ExpenseItem } from '../types';
 import { Card } from './UI';
@@ -39,10 +39,19 @@ const MONTHS = [
   { value: '12', label: 'Dezembro' },
 ];
 
+const APT_TYPES = [ExpenseType.INSTALLMENT, ExpenseType.NOTE, ExpenseType.FEE, ExpenseType.FURNITURE, ExpenseType.UTILITIES];
+const WED_TYPES = [ExpenseType.EVENT_SPACE, ExpenseType.BUFFET, ExpenseType.CEREMONIALIST, ExpenseType.PHOTOGRAPHER, ExpenseType.DECORATION, ExpenseType.NON_ALCOHOLIC_BAR];
+
 interface ChartData {
   name: string;
   value: number;
   type: ExpenseType;
+}
+
+interface FinancialSummary {
+  total: number;
+  paid: number;
+  pending: number;
 }
 
 export const Dashboard: React.FC = () => {
@@ -76,7 +85,11 @@ export const Dashboard: React.FC = () => {
   }, [allItems]);
 
   // Calcular totais e dados dos gráficos com base nos filtros
-  const { aptData, aptTotal, wedData, wedTotal, displayDate } = useMemo(() => {
+  const { 
+    aptData, aptSummary, 
+    wedData, wedSummary, 
+    displayDate 
+  } = useMemo(() => {
     // Lógica de filtragem
     const filteredItems = allItems.filter(item => {
       const [itemYear, itemMonth] = item.date.split('-');
@@ -100,13 +113,19 @@ export const Dashboard: React.FC = () => {
     }
 
     // --- CÁLCULOS APARTAMENTO ---
-    const installments = filteredItems.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
-    const notes = filteredItems.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
-    const fees = filteredItems.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
-    const furniture = filteredItems.filter(i => i.type === ExpenseType.FURNITURE).reduce((acc, c) => acc + c.amount, 0);
-    const utilities = filteredItems.filter(i => i.type === ExpenseType.UTILITIES).reduce((acc, c) => acc + c.amount, 0);
+    const aptItems = filteredItems.filter(i => APT_TYPES.includes(i.type));
+    
+    // Totais por categoria (Gráfico)
+    const installments = aptItems.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
+    const notes = aptItems.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
+    const fees = aptItems.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
+    const furniture = aptItems.filter(i => i.type === ExpenseType.FURNITURE).reduce((acc, c) => acc + c.amount, 0);
+    const utilities = aptItems.filter(i => i.type === ExpenseType.UTILITIES).reduce((acc, c) => acc + c.amount, 0);
 
-    const aptTotalCalc = installments + notes + fees + furniture + utilities;
+    // Resumo Financeiro (Pago vs Pendente)
+    const aptPaid = aptItems.filter(i => i.status === 'PAID').reduce((acc, c) => acc + c.amount, 0);
+    const aptPending = aptItems.filter(i => i.status === 'PENDING').reduce((acc, c) => acc + c.amount, 0);
+    const aptTotalCalc = aptPaid + aptPending;
 
     const aptChartData = [
       { name: 'Financiamento Ap.', value: installments, type: ExpenseType.INSTALLMENT },
@@ -117,14 +136,20 @@ export const Dashboard: React.FC = () => {
     ].filter(item => item.value > 0);
 
     // --- CÁLCULOS CASAMENTO ---
-    const eventSpace = filteredItems.filter(i => i.type === ExpenseType.EVENT_SPACE).reduce((acc, c) => acc + c.amount, 0);
-    const buffet = filteredItems.filter(i => i.type === ExpenseType.BUFFET).reduce((acc, c) => acc + c.amount, 0);
-    const ceremonialist = filteredItems.filter(i => i.type === ExpenseType.CEREMONIALIST).reduce((acc, c) => acc + c.amount, 0);
-    const photographer = filteredItems.filter(i => i.type === ExpenseType.PHOTOGRAPHER).reduce((acc, c) => acc + c.amount, 0);
-    const decoration = filteredItems.filter(i => i.type === ExpenseType.DECORATION).reduce((acc, c) => acc + c.amount, 0);
-    const bar = filteredItems.filter(i => i.type === ExpenseType.NON_ALCOHOLIC_BAR).reduce((acc, c) => acc + c.amount, 0);
+    const wedItems = filteredItems.filter(i => WED_TYPES.includes(i.type));
 
-    const wedTotalCalc = eventSpace + buffet + ceremonialist + photographer + decoration + bar;
+    // Totais por categoria (Gráfico)
+    const eventSpace = wedItems.filter(i => i.type === ExpenseType.EVENT_SPACE).reduce((acc, c) => acc + c.amount, 0);
+    const buffet = wedItems.filter(i => i.type === ExpenseType.BUFFET).reduce((acc, c) => acc + c.amount, 0);
+    const ceremonialist = wedItems.filter(i => i.type === ExpenseType.CEREMONIALIST).reduce((acc, c) => acc + c.amount, 0);
+    const photographer = wedItems.filter(i => i.type === ExpenseType.PHOTOGRAPHER).reduce((acc, c) => acc + c.amount, 0);
+    const decoration = wedItems.filter(i => i.type === ExpenseType.DECORATION).reduce((acc, c) => acc + c.amount, 0);
+    const bar = wedItems.filter(i => i.type === ExpenseType.NON_ALCOHOLIC_BAR).reduce((acc, c) => acc + c.amount, 0);
+
+    // Resumo Financeiro (Pago vs Pendente)
+    const wedPaid = wedItems.filter(i => i.status === 'PAID').reduce((acc, c) => acc + c.amount, 0);
+    const wedPending = wedItems.filter(i => i.status === 'PENDING').reduce((acc, c) => acc + c.amount, 0);
+    const wedTotalCalc = wedPaid + wedPending;
 
     const wedChartData = [
       { name: 'Espaço Evento', value: eventSpace, type: ExpenseType.EVENT_SPACE },
@@ -137,14 +162,17 @@ export const Dashboard: React.FC = () => {
 
     return {
       aptData: aptChartData,
-      aptTotal: aptTotalCalc,
+      aptSummary: { total: aptTotalCalc, paid: aptPaid, pending: aptPending },
       wedData: wedChartData,
-      wedTotal: wedTotalCalc,
+      wedSummary: { total: wedTotalCalc, paid: wedPaid, pending: wedPending },
       displayDate: dateText
     };
   }, [allItems, selectedYear, selectedMonth]);
 
-  const renderSection = (title: string, icon: React.ReactNode, data: ChartData[], total: number, colors: string[]) => (
+  const renderSection = (title: string, icon: React.ReactNode, data: ChartData[], summary: FinancialSummary, colors: string[]) => {
+    const paidPercentage = summary.total > 0 ? (summary.paid / summary.total) * 100 : 0;
+    
+    return (
     <div className="space-y-4 mb-10">
       <div className="flex items-center gap-2 mb-2">
         <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
@@ -195,12 +223,15 @@ export const Dashboard: React.FC = () => {
             </div>
         </Card>
 
-        {/* GRÁFICO DE PIZZA (TOTAL) */}
-        <Card className="border-indigo-50 shadow-indigo-100">
-            <h3 className="text-lg font-bold text-slate-800 mb-1">Total Consolidado</h3>
-            <p className="text-sm text-slate-400 mb-6">{title}</p>
-            <div className="h-48 w-full flex items-center justify-center relative">
-                {total > 0 ? (
+        {/* GRÁFICO DE PIZZA (TOTAL) + RESUMO FINANCEIRO */}
+        <Card className="border-indigo-50 shadow-indigo-100 flex flex-col">
+            <div className="mb-4">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Total Consolidado</h3>
+                <p className="text-sm text-slate-400">{title}</p>
+            </div>
+            
+            <div className="h-48 w-full flex items-center justify-center relative flex-shrink-0">
+                {summary.total > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                             <Pie
@@ -224,23 +255,62 @@ export const Dashboard: React.FC = () => {
                      </div>
                 )}
                 
-                {total > 0 && (
+                {summary.total > 0 && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
                         <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total</span>
                         <span className="font-bold text-2xl text-slate-800">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(total)}
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(summary.total)}
                         </span>
                     </div>
                 )}
             </div>
-            <div className="space-y-4 mt-6">
+
+            {/* SEÇÃO DE SALDO (NOVO) */}
+            {summary.total > 0 && (
+                <div className="mt-4 pt-4 border-t border-dashed border-gray-100">
+                    <div className="flex justify-between items-center text-xs text-gray-500 mb-1.5">
+                        <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-500"/> Pago ({Math.round(paidPercentage)}%)</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-amber-500"/> Falta Pagar</span>
+                    </div>
+                    
+                    {/* Barra de Progresso */}
+                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden flex mb-3">
+                        <div 
+                            className="bg-green-500 h-full transition-all duration-500" 
+                            style={{ width: `${paidPercentage}%` }}
+                        />
+                        <div 
+                            className="bg-amber-400 h-full transition-all duration-500" 
+                            style={{ width: `${100 - paidPercentage}%` }}
+                        />
+                    </div>
+
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <span className="block text-[10px] text-gray-400 uppercase font-semibold">Quitado</span>
+                            <span className="text-sm font-bold text-green-600">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.paid)}
+                            </span>
+                        </div>
+                        <div className="text-right">
+                             <span className="block text-[10px] text-gray-400 uppercase font-semibold">Saldo Devedor</span>
+                            <span className="text-sm font-bold text-amber-600">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.pending)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Lista de Categorias (Scrollável se necessário) */}
+            <div className="space-y-3 mt-4 pt-4 border-t border-gray-50 flex-1 overflow-y-auto max-h-40 scrollbar-thin scrollbar-thumb-gray-100">
                 {data.map((item, idx) => (
                     <div key={item.name} className="flex items-center justify-between text-sm group">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full ring-2 ring-offset-1 ring-white" style={{ backgroundColor: colors[idx % colors.length] }}></div>
-                            <span className="text-slate-500 group-hover:text-slate-700 transition-colors truncate max-w-[150px]">{item.name}</span>
+                            <span className="text-slate-500 text-xs truncate max-w-[120px]">{item.name}</span>
                         </div>
-                        <span className="font-semibold text-slate-700 bg-slate-50 px-2 py-1 rounded-md text-xs">
+                        <span className="font-semibold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded text-xs">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
                         </span>
                     </div>
@@ -250,6 +320,7 @@ export const Dashboard: React.FC = () => {
       </div>
     </div>
   );
+  }
 
   if (isLoading) {
       return (
@@ -331,7 +402,7 @@ export const Dashboard: React.FC = () => {
         "Apartamento", 
         <Building2 className="w-6 h-6" />, 
         aptData, 
-        aptTotal, 
+        aptSummary, 
         APT_COLORS
       )}
 
@@ -343,7 +414,7 @@ export const Dashboard: React.FC = () => {
         "Casamento", 
         <HeartHandshake className="w-6 h-6" />, 
         wedData, 
-        wedTotal, 
+        wedSummary, 
         WED_COLORS
       )}
     </div>

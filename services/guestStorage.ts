@@ -18,14 +18,16 @@ export const GuestService = {
       id: item.id,
       name: item.name,
       side: item.side as GuestSide,
+      isChild: item.is_child || false, // Mapeia do banco (snake_case) para o app (camelCase)
       createdAt: new Date(item.created_at).getTime(),
     }));
   },
 
-  add: async (name: string, side: GuestSide): Promise<Guest | null> => {
+  add: async (name: string, side: GuestSide, isChild: boolean): Promise<Guest | null> => {
     const newGuest = {
       name,
       side,
+      is_child: isChild,
       created_at: new Date().toISOString()
     };
 
@@ -44,6 +46,7 @@ export const GuestService = {
       id: data.id,
       name: data.name,
       side: data.side,
+      isChild: data.is_child,
       createdAt: new Date(data.created_at).getTime()
     };
   },
