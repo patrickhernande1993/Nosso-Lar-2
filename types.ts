@@ -6,6 +6,7 @@ export enum ExpenseType {
   FEE = 'FEE', // Taxas de Condomínio
   FURNITURE = 'FURNITURE', // Móveis Planejados
   UTILITIES = 'UTILITIES', // Energia Elétrica / Utilidades
+  DOCUMENT = 'DOCUMENT', // Documentos e Contratos (Novo)
   
   // Novos tipos para Casamento
   EVENT_SPACE = 'EVENT_SPACE', // Espaço Evento

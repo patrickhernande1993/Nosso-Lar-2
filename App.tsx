@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ExpenseModule } from './components/ExpenseModule';
 import { GuestListModule } from './components/GuestListModule';
+import { DocumentModule } from './components/DocumentModule';
 import { Dashboard } from './components/Dashboard';
 import { ExpenseType } from './types';
 
@@ -63,6 +64,10 @@ const App: React.FC = () => {
                 description="Histórico de contas de luz e utilidades."
               />
             } 
+          />
+          <Route 
+            path="/documents" 
+            element={<DocumentModule />} 
           />
 
           {/* Rotas de Casamento */}
