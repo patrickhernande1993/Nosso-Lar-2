@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, Home, FileText, CreditCard, DollarSign, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList, Heart, Users, FolderOpen } from 'lucide-react';
+import { Menu, X, Home, FileText, CreditCard, DollarSign, Building2, Sofa, Zap, ChevronDown, ChevronRight, HeartHandshake, MapPin, Utensils, Camera, Flower2, GlassWater, ClipboardList, Heart, Users, FolderOpen, Landmark } from 'lucide-react';
 import { ExpenseType, NavigationItem } from '../types';
 
 const NAV_ITEMS: NavigationItem[] = [
@@ -16,6 +16,7 @@ const NAV_ITEMS: NavigationItem[] = [
       { label: 'Financiamento Ap.', path: '/installments', icon: <CreditCard className="w-4 h-4" />, type: ExpenseType.INSTALLMENT },
       { label: 'Notas Promissórias', path: '/notes', icon: <FileText className="w-4 h-4" />, type: ExpenseType.NOTE },
       { label: 'Taxas de Condomínio', path: '/fees', icon: <DollarSign className="w-4 h-4" />, type: ExpenseType.FEE },
+      { label: 'IPTU', path: '/iptu', icon: <Landmark className="w-4 h-4" />, type: ExpenseType.IPTU },
       { label: 'Móveis Planejados', path: '/furniture', icon: <Sofa className="w-4 h-4" />, type: ExpenseType.FURNITURE },
       { label: 'Energia Elétrica', path: '/utilities', icon: <Zap className="w-4 h-4" />, type: ExpenseType.UTILITIES },
       { label: 'Gestão de Documentos', path: '/documents', icon: <FolderOpen className="w-4 h-4" />, type: ExpenseType.DOCUMENT },

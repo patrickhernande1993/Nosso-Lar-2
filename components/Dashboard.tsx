@@ -10,6 +10,7 @@ const APT_COLORS = [
   '#6366f1', // Indigo (Parcelas)
   '#10b981', // Emerald (Notas)
   '#f59e0b', // Amber (Taxas)
+  '#a855f7', // Purple (IPTU)
   '#ec4899', // Pink (Móveis)
   '#3b82f6', // Blue (Energia)
 ];
@@ -39,7 +40,7 @@ const MONTHS = [
   { value: '12', label: 'Dezembro' },
 ];
 
-const APT_TYPES = [ExpenseType.INSTALLMENT, ExpenseType.NOTE, ExpenseType.FEE, ExpenseType.FURNITURE, ExpenseType.UTILITIES];
+const APT_TYPES = [ExpenseType.INSTALLMENT, ExpenseType.NOTE, ExpenseType.FEE, ExpenseType.IPTU, ExpenseType.FURNITURE, ExpenseType.UTILITIES];
 const WED_TYPES = [ExpenseType.EVENT_SPACE, ExpenseType.BUFFET, ExpenseType.CEREMONIALIST, ExpenseType.PHOTOGRAPHER, ExpenseType.DECORATION, ExpenseType.NON_ALCOHOLIC_BAR];
 
 interface ChartData {
@@ -119,6 +120,7 @@ export const Dashboard: React.FC = () => {
     const installments = aptItems.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
     const notes = aptItems.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
     const fees = aptItems.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
+    const iptu = aptItems.filter(i => i.type === ExpenseType.IPTU).reduce((acc, c) => acc + c.amount, 0);
     const furniture = aptItems.filter(i => i.type === ExpenseType.FURNITURE).reduce((acc, c) => acc + c.amount, 0);
     const utilities = aptItems.filter(i => i.type === ExpenseType.UTILITIES).reduce((acc, c) => acc + c.amount, 0);
 
@@ -131,6 +133,7 @@ export const Dashboard: React.FC = () => {
       { name: 'Financiamento Ap.', value: installments, type: ExpenseType.INSTALLMENT },
       { name: 'Notas Promissórias', value: notes, type: ExpenseType.NOTE },
       { name: 'Taxas de Condomínio', value: fees, type: ExpenseType.FEE },
+      { name: 'IPTU', value: iptu, type: ExpenseType.IPTU },
       { name: 'Móveis Planejados', value: furniture, type: ExpenseType.FURNITURE },
       { name: 'Energia Elétrica', value: utilities, type: ExpenseType.UTILITIES },
     ].filter(item => item.value > 0);
@@ -318,105 +321,6 @@ export const Dashboard: React.FC = () => {
             </div>
         </Card>
       </div>
-    </div>
-  );
-  }
-
-  if (isLoading) {
-      return (
-          <div className="flex h-64 w-full items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-          </div>
-      );
-  }
-
-  return (
-    <div className="pb-10">
-      {/* Barra de Filtro */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 text-gray-700 w-full md:w-auto">
-            <div className="bg-indigo-50 p-2 rounded-lg">
-                <Filter className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-                <span className="block font-medium text-sm">Filtrar Período</span>
-                <span className="text-xs text-gray-400">Selecione ano e/ou mês</span>
-            </div>
-        </div>
-        
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
-            {/* Seletor de Mês */}
-            <div className="relative w-full sm:w-40">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                </div>
-                <select 
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="appearance-none pl-10 pr-8 py-2 w-full bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                >
-                    <option value="">Todos os meses</option>
-                    {MONTHS.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                </div>
-            </div>
-
-            {/* Seletor de Ano */}
-            <div className="relative w-full sm:w-32">
-                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                </div>
-                <select 
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(e.target.value)}
-                    className="appearance-none pl-10 pr-8 py-2 w-full bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                >
-                    <option value="">Todos os anos</option>
-                    {availableYears.map(year => (
-                        <option key={year} value={year}>{year}</option>
-                    ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                </div>
-            </div>
-            
-            {(selectedYear || selectedMonth) && (
-                <button 
-                    onClick={() => { setSelectedYear(''); setSelectedMonth(''); }}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors w-full sm:w-auto flex justify-center"
-                    title="Limpar Filtro"
-                >
-                    <XCircle className="w-5 h-5" />
-                </button>
-            )}
-        </div>
-      </div>
-
-      {/* Seção Apartamento */}
-      {renderSection(
-        "Apartamento", 
-        <Building2 className="w-6 h-6" />, 
-        aptData, 
-        aptSummary, 
-        APT_COLORS
-      )}
-
-      {/* Divisor Visual */}
-      <div className="border-t border-dashed border-gray-200 my-8"></div>
-
-      {/* Seção Casamento */}
-      {renderSection(
-        "Casamento", 
-        <HeartHandshake className="w-6 h-6" />, 
-        wedData, 
-        wedSummary, 
-        WED_COLORS
-      )}
     </div>
   );
 };

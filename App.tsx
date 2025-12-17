@@ -46,6 +46,16 @@ const App: React.FC = () => {
             } 
           />
           <Route 
+            path="/iptu" 
+            element={
+              <ExpenseModule 
+                type={ExpenseType.IPTU} 
+                title="IPTU" 
+                description="Imposto Predial e Territorial Urbano."
+              />
+            } 
+          />
+          <Route 
             path="/furniture" 
             element={
               <ExpenseModule 
