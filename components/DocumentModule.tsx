@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, Loader2, FileText, FileImage, Download, ExternalLink, CalendarDays } from 'lucide-react';
+import { Plus, Trash2, Search, Loader2, FileText, FileImage, Download, ExternalLink, CalendarDays, X, Files } from 'lucide-react';
 import { ExpenseType, ExpenseItem } from '../types';
 import { StorageService } from '../services/storage';
 import { Button, Input, Modal, Card } from './UI';
@@ -8,12 +8,13 @@ export const DocumentModule: React.FC = () => {
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Form State
   const [title, setTitle] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | undefined>(undefined);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const loadDocuments = async () => {
     setIsLoading(true);
@@ -33,35 +34,60 @@ export const DocumentModule: React.FC = () => {
 
   const handleOpenModal = () => {
     setTitle('');
-    setSelectedFile(undefined);
+    setSelectedFiles([]);
+    setUploadProgress({ current: 0, total: 0 });
     setIsModalOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !selectedFile) {
-        alert("Por favor, preencha o título e selecione um arquivo.");
+    if (!title.trim() || selectedFiles.length === 0) {
+        alert("Por favor, preencha o título e selecione pelo menos um arquivo.");
         return;
     }
 
     setIsSaving(true);
+    setUploadProgress({ current: 0, total: selectedFiles.length });
     
     try {
-      const itemPayload: ExpenseItem = {
-        id: crypto.randomUUID(),
-        type: ExpenseType.DOCUMENT,
-        description: title,
-        amount: 0, // Documentos não têm valor financeiro
-        date: new Date().toISOString().split('T')[0], // Data de hoje
-        createdAt: Date.now(),
-        status: 'PAID' // Irrelevante para documentos
-      };
+      // Faz o upload de cada arquivo individualmente
+      for (let i = 0; i < selectedFiles.length; i++) {
+        setUploadProgress(prev => ({ ...prev, current: i + 1 }));
+        
+        const file = selectedFiles[i];
+        // Se for mais de um arquivo, adicionamos um sufixo ao título para diferenciar
+        const displayTitle = selectedFiles.length > 1 
+          ? `${title} (${i + 1}/${selectedFiles.length})` 
+          : title;
 
-      await StorageService.add(itemPayload, selectedFile);
+        const itemPayload: ExpenseItem = {
+          id: crypto.randomUUID(),
+          type: ExpenseType.DOCUMENT,
+          description: displayTitle,
+          amount: 0,
+          date: new Date().toISOString().split('T')[0],
+          createdAt: Date.now(),
+          status: 'PAID'
+        };
+
+        await StorageService.add(itemPayload, file);
+      }
+
       await loadDocuments();
       setIsModalOpen(false);
     } catch (error: any) {
-      alert('Erro ao salvar documento: ' + (error?.message || 'Verifique o console.'));
+      alert('Erro ao salvar documentos: ' + (error?.message || 'Verifique o console.'));
     } finally {
       setIsSaving(false);
     }
@@ -80,7 +106,7 @@ export const DocumentModule: React.FC = () => {
 
   const filteredItems = items.filter(i => 
     i.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ).sort((a, b) => b.createdAt - a.createdAt);
 
   const getFileIcon = (url?: string) => {
     if (url?.toLowerCase().endsWith('.pdf')) {
@@ -121,7 +147,7 @@ export const DocumentModule: React.FC = () => {
           </div>
       ) : filteredItems.length === 0 ? (
           <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <Files className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">Nenhum documento encontrado.</p>
               <p className="text-sm text-gray-400">Clique em "Novo Documento" para começar.</p>
           </div>
@@ -179,7 +205,7 @@ export const DocumentModule: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => !isSaving && setIsModalOpen(false)}
-        title="Adicionar Novo Documento"
+        title="Adicionar Documentos"
       >
         <form onSubmit={handleSave} className="space-y-6">
           <Input
@@ -191,7 +217,7 @@ export const DocumentModule: React.FC = () => {
             disabled={isSaving}
           />
 
-          <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200 hover:border-indigo-300 transition-colors text-center">
+          <div className={`bg-gray-50 p-6 rounded-xl border-2 border-dashed transition-colors text-center ${selectedFiles.length > 0 ? 'border-indigo-400 bg-indigo-50/30' : 'border-gray-200 hover:border-indigo-300'}`}>
              <div className="mb-4 flex justify-center">
                  <div className="p-3 bg-white rounded-full shadow-sm">
                      <Download className="w-6 h-6 text-indigo-500" />
@@ -200,46 +226,78 @@ export const DocumentModule: React.FC = () => {
              
              <label htmlFor="file-upload" className="cursor-pointer">
                  <span className="block font-medium text-indigo-600 hover:text-indigo-800 mb-1">
-                     Clique para selecionar o arquivo
+                     Clique para selecionar arquivos
                  </span>
                  <span className="block text-xs text-gray-400">
-                     PDF, JPG ou PNG (Max 10MB)
+                     PDF, JPG ou PNG (Você pode selecionar vários)
                  </span>
                  <input
                     id="file-upload"
                     type="file"
                     accept="image/*,.pdf"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0])}
+                    multiple
+                    onChange={handleFileChange}
                     className="hidden"
                     disabled={isSaving}
                  />
              </label>
-
-             {selectedFile && (
-                 <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200 flex items-center gap-3 text-left">
-                     {selectedFile.type.includes('pdf') ? (
-                         <FileText className="w-8 h-8 text-red-500 flex-shrink-0" />
-                     ) : (
-                         <FileImage className="w-8 h-8 text-indigo-500 flex-shrink-0" />
-                     )}
-                     <div className="overflow-hidden">
-                         <p className="text-sm font-medium text-gray-700 truncate">{selectedFile.name}</p>
-                         <p className="text-xs text-gray-400">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                     </div>
-                 </div>
-             )}
           </div>
+
+          {/* Lista de Arquivos Selecionados */}
+          {selectedFiles.length > 0 && (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arquivos selecionados ({selectedFiles.length})</p>
+                  {selectedFiles.map((file, index) => (
+                      <div key={index} className="p-3 bg-white rounded-lg border border-gray-200 flex items-center gap-3 text-left group">
+                          {file.type.includes('pdf') ? (
+                              <FileText className="w-6 h-6 text-red-500 flex-shrink-0" />
+                          ) : (
+                              <FileImage className="w-6 h-6 text-indigo-500 flex-shrink-0" />
+                          )}
+                          <div className="flex-1 overflow-hidden">
+                              <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+                              <p className="text-[10px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                          {!isSaving && (
+                              <button 
+                                type="button"
+                                onClick={() => removeFile(index)}
+                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                              >
+                                  <X className="w-4 h-4" />
+                              </button>
+                          )}
+                      </div>
+                  ))}
+              </div>
+          )}
+
+          {/* Barra de Progresso durante salvamento */}
+          {isSaving && (
+              <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-medium text-indigo-600">
+                      <span>Enviando arquivos...</span>
+                      <span>{uploadProgress.current} de {uploadProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-indigo-500 h-full transition-all duration-300"
+                        style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                      ></div>
+                  </div>
+              </div>
+          )}
 
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSaving || !selectedFile} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSaving || selectedFiles.length === 0} className="w-full sm:w-auto">
               {isSaving ? (
                   <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+                      <Loader2 className="w-4 h-4 animate-spin" /> Processando...
                   </span>
-              ) : 'Salvar Documento'}
+              ) : `Salvar ${selectedFiles.length > 1 ? selectedFiles.length + ' Arquivos' : 'Documento'}`}
             </Button>
           </div>
         </form>
