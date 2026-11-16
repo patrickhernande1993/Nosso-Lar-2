@@ -1,10 +1,28 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 // --- Card ---
 export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 ${className}`}>
+  <div className={`bg-white rounded-2xl border border-sand-200 shadow-soft p-6 ${className}`}>
     {children}
+  </div>
+);
+
+// --- Page header ---
+export const PageHeader: React.FC<{
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+}> = ({ eyebrow, title, description, actions }) => (
+  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+    <div>
+      {eyebrow && <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 mb-2">{eyebrow}</p>}
+      <h1 className="font-display text-3xl md:text-4xl font-semibold text-sand-900 tracking-tight">{title}</h1>
+      {description && <p className="text-sm text-sand-500 mt-2 max-w-xl">{description}</p>}
+    </div>
+    {actions && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">{actions}</div>}
   </div>
 );
 
@@ -15,24 +33,23 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button: React.FC<ButtonProps> = ({ variant = 'primary', size = 'md', className = '', ...props }) => {
-  const baseStyle = "inline-flex items-center justify-center font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg";
-  
+  const baseStyle =
+    'inline-flex items-center justify-center gap-2 font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-500 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]';
+
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500",
-    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-indigo-500",
-    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
-    ghost: "bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:ring-gray-500",
+    primary: 'bg-brand-700 text-white hover:bg-brand-800 shadow-sm',
+    secondary: 'bg-white text-sand-800 border border-sand-200 hover:bg-sand-50 hover:border-sand-300',
+    danger: 'bg-clay-600 text-white hover:bg-clay-700',
+    ghost: 'bg-transparent text-sand-600 hover:bg-sand-100 hover:text-sand-900',
   };
 
   const sizes = {
-    sm: "px-3 py-1.5 text-xs",
-    md: "px-4 py-2 text-sm",
-    lg: "px-6 py-3 text-base",
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-4 py-2.5 text-sm',
+    lg: 'px-6 py-3 text-base',
   };
 
-  return (
-    <button className={`${baseStyle} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />
-  );
+  return <button className={`${baseStyle} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />;
 };
 
 // --- Input ---
@@ -43,12 +60,12 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 export const Input: React.FC<InputProps> = ({ label, error, className = '', ...props }) => (
   <div className="w-full">
-    {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+    {label && <label className="block text-xs font-semibold text-sand-600 mb-1.5">{label}</label>}
     <input
-      className={`w-full rounded-lg border ${error ? 'border-red-300' : 'border-gray-300'} px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm ${className}`}
+      className={`w-full rounded-xl border ${error ? 'border-clay-400' : 'border-sand-200'} bg-sand-50/60 px-3.5 py-2.5 text-sm text-sand-900 placeholder-sand-400 transition focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 disabled:opacity-60 ${className}`}
       {...props}
     />
-    {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    {error && <p className="mt-1 text-xs text-clay-600">{error}</p>}
   </div>
 );
 
@@ -61,32 +78,47 @@ interface ModalProps {
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
-        
-        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all w-full max-w-lg mx-auto my-8">
-          <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold leading-6 text-gray-900">{title}</h3>
-              <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {children}
+  // Portal no body: evita que transformações/animações dos contêineres da página prendam o modal.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] overflow-y-auto" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="flex min-h-full items-end sm:items-center justify-center sm:p-4">
+        <div className="fixed inset-0 bg-sand-900/40 backdrop-blur-[2px]" onClick={onClose} />
+        <div className="animate-rise relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-sand-200">
+          <div className="flex items-center justify-between px-6 pt-6 pb-4">
+            <h3 className="font-display text-xl font-semibold text-sand-900">{title}</h3>
+            <button onClick={onClose} aria-label="Fechar" className="p-2 -mr-2 rounded-full text-sand-400 hover:text-sand-800 hover:bg-sand-100 transition">
+              <X className="h-5 w-5" />
+            </button>
           </div>
+          <div className="px-6 pb-6">{children}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
 // --- Badge ---
-export const Badge: React.FC<{ children: React.ReactNode, color?: string }> = ({ children, color = 'bg-gray-100 text-gray-800' }) => (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${color}`}>
-        {children}
-    </span>
+export const Badge: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = 'bg-sand-100 text-sand-700' }) => (
+  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${color}`}>{children}</span>
 );
+
+export const StatusBadge: React.FC<{ status: 'PAID' | 'PENDING' }> = ({ status }) =>
+  status === 'PAID' ? (
+    <Badge color="bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/15">
+      <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mr-1.5" /> Pago
+    </Badge>
+  ) : (
+    <Badge color="bg-clay-50 text-clay-700 ring-1 ring-inset ring-clay-600/15">
+      <span className="w-1.5 h-1.5 rounded-full bg-clay-500 mr-1.5" /> Em aberto
+    </Badge>
+  );

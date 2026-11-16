@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, CheckCircle2, Clock, Layers, CalendarRange, MoreVertical } from 'lucide-react';
-import { ExpenseType, ExpenseItem, ExpenseStatus } from '../types';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange } from 'lucide-react';
+import { ExpenseType, ExpenseItem, ExpenseStatus, ExpenseShare } from '../types';
 import { StorageService } from '../services/storage';
-import { Button, Input, Modal, Card, Badge } from './UI';
+import { ShareService } from '../services/payerStorage';
+import { Button, Input, Modal, Card, PageHeader, StatusBadge } from './UI';
+import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
+import { Category, formatBRL as formatCurrency } from '../lib/categories';
+import { usePayers, initials } from '../lib/PayersContext';
 
 interface ExpenseModuleProps {
-  type: ExpenseType;
-  title: string;
-  description: string;
+  category: Category;
 }
 
-export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, description }) => {
+export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
+  const { key: type, name: title, description } = category;
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -35,11 +38,23 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
   const [batchCount, setBatchCount] = useState('12'); // Quantidade de meses
   const [batchDueDay, setBatchDueDay] = useState('10'); // Dia do vencimento padrão
 
+  // Divisão com pagantes (lançamento único e lote)
+  const { tableMissing: sharesUnavailable, payerById } = usePayers();
+  const [sharesByExpense, setSharesByExpense] = useState<Map<string, ExpenseShare[]>>(new Map());
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [shareRows, setShareRows] = useState<ShareRow[]>([]);
+  const [batchSplitEnabled, setBatchSplitEnabled] = useState(false);
+  const [batchShareRows, setBatchShareRows] = useState<ShareRow[]>([]);
+
   // Load data
   const loadItems = async () => {
     setIsLoading(true);
     try {
-      const data = await StorageService.getByType(type);
+      const [data, shares] = await Promise.all([StorageService.getByType(type), ShareService.getAll()]);
+      const ids = new Set(data.map(i => String(i.id)));
+      const map = new Map<string, ExpenseShare[]>();
+      shares.filter(s => ids.has(s.expenseId)).forEach(s => map.set(s.expenseId, [...(map.get(s.expenseId) ?? []), s]));
+      setSharesByExpense(map);
       setItems(data);
     } catch (error) {
       console.error("Failed to load items", error);
@@ -62,7 +77,12 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
       setMonthYear(item.monthYear || '');
       setStatus(item.status);
       setExistingReceiptUrl(item.receiptUrl);
+      const existing = sharesByExpense.get(String(item.id)) ?? [];
+      setSplitEnabled(existing.length > 0);
+      setShareRows(toRows(existing));
     } else {
+      setSplitEnabled(false);
+      setShareRows([]);
       setEditingId(null);
       setDesc('');
       setAmount('');
@@ -94,6 +114,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
     
     setBatchCount('12');
     setBatchDueDay('10');
+    setBatchSplitEnabled(false);
+    setBatchShareRows([]);
     setIsBatchModalOpen(true);
   };
 
@@ -135,16 +157,32 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         date,
         monthYear: finalMonthYear,
         createdAt: Date.now(),
-        receiptUrl: existingReceiptUrl, 
+        receiptUrl: existingReceiptUrl,
         status: status
       };
+
+      // Valida a divisão antes de gravar qualquer coisa
+      let shares: ReturnType<typeof validateRows> = { shares: [] };
+      if (splitEnabled && !sharesUnavailable) {
+        shares = validateRows(shareRows, itemPayload.amount);
+        if ('error' in shares) {
+          alert(shares.error);
+          setIsSaving(false);
+          return;
+        }
+      }
 
       if (editingId) {
         await StorageService.update(itemPayload, selectedFile);
       } else {
         await StorageService.add(itemPayload, selectedFile);
       }
-      
+
+      const hadShares = (sharesByExpense.get(String(itemPayload.id)) ?? []).length > 0;
+      if (!sharesUnavailable && 'shares' in shares && (shares.shares.length > 0 || hadShares)) {
+        await ShareService.replaceForExpense(String(itemPayload.id), shares.shares);
+      }
+
       await loadItems();
       setIsModalOpen(false);
     } catch (error: any) {
@@ -184,6 +222,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         const itemsToCreate: ExpenseItem[] = [];
         const baseAmount = parseFloat(batchAmount);
 
+        let batchShares: ReturnType<typeof validateRows> = { shares: [] };
+        if (batchSplitEnabled && !sharesUnavailable) {
+            batchShares = validateRows(batchShareRows, baseAmount);
+            if ('error' in batchShares) {
+                alert(batchShares.error);
+                setIsSaving(false);
+                return;
+            }
+        }
+
         for (let i = 0; i < count; i++) {
             let currentMonth = startM + i;
             let currentYear = startY;
@@ -211,6 +259,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         }
 
         await StorageService.addBatch(itemsToCreate);
+        if ('shares' in batchShares && batchShares.shares.length > 0) {
+            await ShareService.addForExpenses(itemsToCreate.map(i => i.id), batchShares.shares);
+        }
         await loadItems();
         setIsBatchModalOpen(false);
         alert(`${count} parcelas geradas com sucesso!`);
@@ -252,183 +303,193 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [items, searchQuery]);
 
-  const StatusBadge = ({ status }: { status: ExpenseStatus }) => {
-      if (status === 'PAID') {
-          return (
-              <Badge color="bg-green-100 text-green-700 ring-1 ring-green-600/20">
-                  <span className="flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Pago
-                  </span>
-              </Badge>
-          );
-      }
-      return (
-          <Badge color="bg-amber-100 text-amber-700 ring-1 ring-amber-600/20">
-              <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Em Aberto
+  const totals = useMemo(() => {
+    const paid = items.filter(i => i.status === 'PAID').reduce((a, i) => a + i.amount, 0);
+    const total = items.reduce((a, i) => a + i.amount, 0);
+    const allShares = Array.from(sharesByExpense.values()).flat();
+    const others = allShares.reduce((a, s) => a + s.amount, 0);
+    const toReceive = allShares.filter(s => !s.reimbursed).reduce((a, s) => a + s.amount, 0);
+    return { total, paid, pending: total - paid, mine: total - others, toReceive, hasShares: allShares.length > 0 };
+  }, [items, sharesByExpense]);
+
+  // Avatares dos pagantes e a parte que fica com vocês, abaixo da descrição
+  const SplitInfo = ({ item }: { item: ExpenseItem }) => {
+    const shares = sharesByExpense.get(String(item.id));
+    if (!shares?.length) return null;
+    const mine = item.amount - shares.reduce((a, s) => a + s.amount, 0);
+    return (
+      <div className="flex items-center gap-2 mt-1">
+        <div className="flex -space-x-1.5">
+          {shares.map(s => {
+            const p = payerById.get(s.payerId);
+            return (
+              <span
+                key={s.id}
+                title={`${p?.name ?? 'Pagante'}: ${formatCurrency(s.amount)} · ${s.reimbursed ? 'reembolsado' : 'a receber'}`}
+                className={`grid place-items-center w-5 h-5 rounded-full text-[9px] font-bold text-white ring-2 ring-white ${s.reimbursed ? '' : 'opacity-60'}`}
+                style={{ backgroundColor: p?.color ?? '#b3a68f' }}
+              >
+                {p ? initials(p.name) : '?'}
               </span>
-          </Badge>
-      );
+            );
+          })}
+        </div>
+        <span className="text-xs text-sand-400">Sua parte {formatCurrency(mine)}</span>
+      </div>
+    );
   };
 
-  // Helper for formatting currency
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  // Helper for date
+  const today = new Date().toISOString().slice(0, 10);
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
+  const ReceiptLink = ({ url, compact }: { url?: string; compact?: boolean }) =>
+    url ? (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Ver comprovante"
+        className={`inline-flex items-center gap-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 transition ${compact ? 'p-2' : 'px-2.5 py-1.5'}`}
+      >
+        {compact ? <Paperclip className="w-4 h-4" /> : <><Eye className="w-3.5 h-3.5" /> Ver</>}
+      </a>
+    ) : compact ? null : (
+      <span className="text-sand-300 text-xs">—</span>
+    );
+
+  const RowActions = ({ item }: { item: ExpenseItem }) => (
+    <div className="flex items-center justify-end gap-1">
+      <button onClick={() => handleOpenModal(item)} aria-label="Editar" className="p-2 rounded-lg text-sand-400 hover:text-brand-700 hover:bg-brand-50 transition">
+        <Edit2 className="w-4 h-4" />
+      </button>
+      <button onClick={() => handleDelete(item.id)} aria-label="Excluir" className="p-2 rounded-lg text-sand-400 hover:text-clay-600 hover:bg-clay-50 transition">
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Header Responsivo */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900">{title}</h2>
-          <p className="text-sm text-gray-500">{description}</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-            {/* Botão Gerar em Lote disponível para todos os tipos */}
-            <Button onClick={handleOpenBatchModal} variant="secondary" className="shadow-sm w-full sm:w-auto justify-center">
-                <Layers className="w-4 h-4 mr-2" />
-                Gerar em Lote
+    <div>
+      <PageHeader
+        eyebrow="Categoria"
+        title={title}
+        description={description}
+        actions={
+          <>
+            <Button onClick={handleOpenBatchModal} variant="secondary" className="w-full sm:w-auto">
+              <Layers className="w-4 h-4" /> Gerar em lote
             </Button>
-            
-            <Button onClick={() => handleOpenModal()} className="shadow-lg shadow-indigo-200 w-full sm:w-auto justify-center">
-                <Plus className="w-4 h-4 mr-2" />
-                Adicionar Novo
+            <Button onClick={() => handleOpenModal()} className="w-full sm:w-auto">
+              <Plus className="w-4 h-4" /> Novo lançamento
             </Button>
-        </div>
+          </>
+        }
+      />
+
+      {/* Resumo */}
+      <div className={`grid grid-cols-1 gap-3 mb-6 ${totals.hasShares ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
+        {[
+          { label: 'Total', value: totals.total, cls: 'text-sand-900', dot: category.color, sub: totals.hasShares ? `Sua parte ${formatCurrency(totals.mine)}` : undefined },
+          { label: 'Pago', value: totals.paid, cls: 'text-brand-700', dot: '#3a7d61' },
+          { label: 'Em aberto', value: totals.pending, cls: 'text-clay-600', dot: '#d6824f' },
+          ...(totals.hasShares ? [{ label: 'A receber', value: totals.toReceive, cls: 'text-[#5279a3]', dot: '#5279a3', sub: 'Reembolsos pendentes' }] : []),
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-2xl border border-sand-200 shadow-soft px-5 py-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sand-400">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.dot }} /> {s.label}
+            </p>
+            <p className={`text-xl font-bold mt-1 tabular ${s.cls}`}>{formatCurrency(s.value)}</p>
+            {'sub' in s && s.sub && <p className="text-xs text-sand-400 mt-0.5">{s.sub}</p>}
+          </div>
+        ))}
       </div>
 
-      {/* Filter & Data Display */}
-      <Card className="overflow-hidden p-0 border border-gray-200 shadow-sm">
-        <div className="p-4 border-b border-gray-100 bg-white flex items-center gap-2">
-            <Search className="w-4 h-4 text-gray-400" />
-            <input 
-                type="text" 
-                placeholder="Buscar por descrição..." 
-                className="bg-transparent border-none focus:ring-0 text-sm w-full outline-none"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-            />
-        </div>
-        
-        {/* DESKTOP TABLE VIEW (Hidden on Mobile) */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vencimento</th>
-                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
-                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Comprovante</th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {isLoading ? (
-                 <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                        <div className="flex justify-center items-center gap-2">
-                             <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-                             Carregando dados...
-                        </div>
-                    </td>
-                </tr>
-              ) : filteredItems.length === 0 ? (
-                <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                        Nenhum registro encontrado.
-                    </td>
-                </tr>
-              ) : (
-                filteredItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{item.description}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(item.date)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <StatusBadge status={item.status} />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                        {formatCurrency(item.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {item.receiptUrl ? (
-                            <a 
-                                href={item.receiptUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="inline-block text-decoration-none"
-                                title="Ver Comprovante"
-                            >
-                                <Button variant="secondary" size="sm" className="flex items-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50">
-                                    <Eye className="w-3 h-3" /> Ver Anexo
-                                </Button>
-                            </a>
-                        ) : (
-                            <span className="text-gray-300 text-xs">-</span>
-                        )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button onClick={() => handleOpenModal(item)} className="text-indigo-600 hover:text-indigo-900 mr-4">
-                        <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
-                        <Trash2 className="w-4 h-4" />
-                        </button>
-                    </td>
-                    </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      <Card className="overflow-hidden p-0">
+        <div className="px-5 py-3.5 border-b border-sand-100 flex items-center gap-3">
+          <Search className="w-4 h-4 text-sand-400" />
+          <input
+            type="text"
+            placeholder="Buscar por descrição..."
+            className="bg-transparent text-sm w-full outline-none placeholder-sand-400"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <span className="text-xs text-sand-400 whitespace-nowrap">{filteredItems.length} itens</span>
         </div>
 
-        {/* MOBILE CARD VIEW (Visible only on Mobile) */}
-        <div className="md:hidden bg-gray-50">
-            {isLoading ? (
-                <div className="p-8 flex justify-center text-gray-500">
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
-                </div>
-            ) : filteredItems.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 text-sm">Nenhum registro encontrado.</div>
-            ) : (
-                <div className="flex flex-col gap-2 p-2">
-                    {filteredItems.map((item) => (
-                        <div key={item.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col gap-3">
-                            <div className="flex justify-between items-start">
-                                <div className="flex-1 pr-2">
-                                    <span className="font-semibold text-gray-900 line-clamp-2">{item.description}</span>
-                                    <span className="text-xs text-gray-400 block mt-1">Venc: {formatDate(item.date)}</span>
-                                </div>
-                                <span className="font-bold text-gray-900">{formatCurrency(item.amount)}</span>
-                            </div>
-                            
-                            <div className="flex items-center justify-between mt-1">
-                                <StatusBadge status={item.status} />
-                                
-                                <div className="flex items-center gap-2">
-                                    {item.receiptUrl && (
-                                        <a href={item.receiptUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100">
-                                            <Paperclip className="w-4 h-4" />
-                                        </a>
-                                    )}
-                                    <button onClick={() => handleOpenModal(item)} className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 border border-gray-200">
-                                        <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => handleDelete(item.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 border border-red-100">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+        {isLoading ? (
+          <div className="py-16 flex justify-center items-center gap-2 text-sand-500 text-sm">
+            <Loader2 className="w-5 h-5 animate-spin text-brand-600" /> Carregando...
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="py-16 text-center">
+            <p className="text-sand-600 font-medium">Nenhum lançamento encontrado</p>
+            <p className="text-sm text-sand-400 mt-1">Use "Novo lançamento" para adicionar o primeiro.</p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-sand-400 bg-sand-50/70">
+                    <th className="px-5 py-3">Descrição</th>
+                    <th className="px-5 py-3">Vencimento</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3 text-right">Valor</th>
+                    <th className="px-5 py-3 text-center">Comprovante</th>
+                    <th className="px-5 py-3 text-right"><span className="sr-only">Ações</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sand-100">
+                  {filteredItems.map((item) => {
+                    const overdue = item.status === 'PENDING' && item.date < today;
+                    return (
+                      <tr key={item.id} className="hover:bg-sand-50/60 transition-colors">
+                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<SplitInfo item={item} /></td>
+                        <td className={`px-5 py-3.5 text-sm tabular whitespace-nowrap ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-500'}`}>
+                          {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">vencido</span>}
+                        </td>
+                        <td className="px-5 py-3.5"><StatusBadge status={item.status} /></td>
+                        <td className="px-5 py-3.5 text-sm text-right font-semibold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</td>
+                        <td className="px-5 py-3.5 text-center"><ReceiptLink url={item.receiptUrl} /></td>
+                        <td className="px-5 py-3.5"><RowActions item={item} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile */}
+            <ul className="md:hidden divide-y divide-sand-100">
+              {filteredItems.map((item) => {
+                const overdue = item.status === 'PENDING' && item.date < today;
+                return (
+                  <li key={item.id} className="px-4 py-4">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sand-900 text-sm line-clamp-2">{item.description}</p>
+                        <SplitInfo item={item} />
+                        <p className={`text-xs mt-1 tabular ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-400'}`}>
+                          Vence em {formatDate(item.date)}{overdue && ' · vencido'}
+                        </p>
+                      </div>
+                      <span className="font-bold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-3">
+                      <StatusBadge status={item.status} />
+                      <div className="flex items-center gap-1">
+                        <ReceiptLink url={item.receiptUrl} compact />
+                        <RowActions item={item} />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </Card>
 
       {/* SINGLE ITEM Modal */}
@@ -440,31 +501,23 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         <form onSubmit={handleSave} className="space-y-4">
           
           {/* Status Selection */}
-          <div className="bg-gray-50 p-2 rounded-lg flex flex-col sm:flex-row items-center justify-center gap-2">
-            <span className="text-sm text-gray-600 font-medium sm:mr-2">Status:</span>
-            <div className="flex gap-2 w-full sm:w-auto justify-center">
+          <div>
+            <span className="block text-xs font-semibold text-sand-600 mb-1.5">Status</span>
+            <div className="grid grid-cols-2 gap-1 p-1 bg-sand-100 rounded-xl" role="radiogroup">
+              {([['PENDING', 'Em aberto', 'text-clay-700'], ['PAID', 'Pago', 'text-brand-700']] as const).map(([value, label, cls]) => (
                 <button
-                    type="button"
-                    onClick={() => setStatus('PENDING')}
-                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                        status === 'PENDING' 
-                        ? 'bg-amber-100 text-amber-700 ring-2 ring-amber-500' 
-                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
-                    }`}
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={status === value}
+                  onClick={() => setStatus(value)}
+                  className={`py-2 rounded-lg text-sm font-semibold transition-all ${
+                    status === value ? `bg-white shadow-sm ${cls}` : 'text-sand-500 hover:text-sand-800'
+                  }`}
                 >
-                    Em Aberto
+                  {label}
                 </button>
-                <button
-                    type="button"
-                    onClick={() => setStatus('PAID')}
-                    className={`flex-1 sm:flex-none px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                        status === 'PAID' 
-                        ? 'bg-green-100 text-green-700 ring-2 ring-green-500' 
-                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                >
-                    Pago
-                </button>
+              ))}
             </div>
           </div>
 
@@ -509,21 +562,30 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
             />
           </div>
 
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-             <label className="block text-sm font-medium text-gray-700 mb-2">
+          <SplitEditor
+            enabled={splitEnabled}
+            onToggle={setSplitEnabled}
+            rows={shareRows}
+            onChange={setShareRows}
+            total={parseFloat(amount) || 0}
+            disabled={isSaving}
+          />
+
+          <div className="bg-sand-50 p-4 rounded-lg border border-sand-100">
+             <label className="block text-sm font-medium text-sand-700 mb-2">
                 Comprovante (Imagem/PDF)
              </label>
              
              {existingReceiptUrl && (
-                 <div className="mb-3 flex items-center justify-between bg-white p-2 rounded border border-gray-200">
-                     <span className="text-xs text-gray-500 flex items-center gap-1 truncate max-w-[150px]">
+                 <div className="mb-3 flex items-center justify-between bg-white p-2 rounded border border-sand-200">
+                     <span className="text-xs text-sand-500 flex items-center gap-1 truncate max-w-[150px]">
                          <Paperclip className="w-3 h-3 flex-shrink-0" /> Anexo atual
                      </span>
                      <a 
                         href={existingReceiptUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded flex-shrink-0"
+                        className="text-xs font-medium text-brand-600 hover:text-brand-800 flex items-center gap-1 bg-brand-50 px-2 py-1 rounded flex-shrink-0"
                     >
                         <ExternalLink className="w-3 h-3" /> Abrir Atual
                     </a>
@@ -535,16 +597,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                     type="file"
                     accept="image/*,.pdf"
                     onChange={(e) => setSelectedFile(e.target.files?.[0])}
-                    className="block w-full text-sm text-slate-500
+                    className="block w-full text-sm text-sand-500
                         file:mr-4 file:py-2 file:px-4
                         file:rounded-full file:border-0
                         file:text-xs file:font-semibold
-                        file:bg-indigo-100 file:text-indigo-700
-                        hover:file:bg-indigo-200"
+                        file:bg-brand-100 file:text-brand-700
+                        hover:file:bg-brand-200"
                     disabled={isSaving}
                 />
              </div>
-             <p className="text-xs text-gray-400 mt-2">
+             <p className="text-xs text-sand-400 mt-2">
                  {existingReceiptUrl 
                     ? "Substitui o arquivo atual." 
                     : "JPG, PNG ou PDF."}
@@ -573,7 +635,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
         title="Gerar Parcelas em Lote"
       >
         <form onSubmit={handleBatchSave} className="space-y-4">
-            <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 text-sm text-indigo-800 mb-4 flex items-start gap-2">
+            <div className="bg-brand-50 p-4 rounded-lg border border-brand-100 text-sm text-brand-800 mb-4 flex items-start gap-2">
                 <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>
                     <p className="font-semibold">Gerador Automático</p>
@@ -637,6 +699,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ type, title, descr
                     disabled={isSaving}
                 />
             </div>
+
+            <SplitEditor
+                enabled={batchSplitEnabled}
+                onToggle={setBatchSplitEnabled}
+                rows={batchShareRows}
+                onChange={setBatchShareRows}
+                total={parseFloat(batchAmount) || 0}
+                disabled={isSaving}
+                showReimbursed={false}
+            />
 
             <div className="pt-4 flex flex-col-reverse sm:flex-row justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => setIsBatchModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto">

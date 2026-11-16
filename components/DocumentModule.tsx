@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Search, Loader2, FileText, FileImage, Download, ExternalLink, CalendarDays, X, Files } from 'lucide-react';
 import { ExpenseType, ExpenseItem } from '../types';
 import { StorageService } from '../services/storage';
-import { Button, Input, Modal, Card } from './UI';
+import { Button, Input, Modal, Card, PageHeader } from './UI';
 
 export const DocumentModule: React.FC = () => {
   const [items, setItems] = useState<ExpenseItem[]>([]);
@@ -110,31 +110,31 @@ export const DocumentModule: React.FC = () => {
 
   const getFileIcon = (url?: string) => {
     if (url?.toLowerCase().endsWith('.pdf')) {
-        return <FileText className="w-8 h-8 text-red-500" />;
+        return <FileText className="w-8 h-8 text-clay-500" />;
     }
-    return <FileImage className="w-8 h-8 text-indigo-500" />;
+    return <FileImage className="w-8 h-8 text-brand-500" />;
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Gestão de Documentos</h2>
-          <p className="text-sm text-gray-500">Centralize contratos, regulamentos e arquivos importantes do apartamento.</p>
-        </div>
-        <Button onClick={handleOpenModal} className="shadow-lg shadow-indigo-200 w-full md:w-auto">
-            <Plus className="w-4 h-4 mr-2" />
-            Novo Documento
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="Arquivos"
+        title="Documentos"
+        description="Contratos, regulamentos e arquivos importantes do apartamento em um só lugar."
+        actions={
+          <Button onClick={handleOpenModal} className="w-full md:w-auto">
+            <Plus className="w-4 h-4" /> Novo documento
+          </Button>
+        }
+      />
 
       {/* Search */}
-      <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+      <div className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sand-400" />
           <input 
               type="text" 
               placeholder="Buscar documento por nome..." 
-              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full pl-10 pr-4 py-3 bg-white border border-sand-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -143,26 +143,26 @@ export const DocumentModule: React.FC = () => {
       {/* Grid de Documentos */}
       {isLoading ? (
           <div className="flex justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
           </div>
       ) : filteredItems.length === 0 ? (
-          <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-              <Files className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">Nenhum documento encontrado.</p>
-              <p className="text-sm text-gray-400">Clique em "Novo Documento" para começar.</p>
+          <div className="text-center py-20 border-2 border-dashed border-sand-200 rounded-xl bg-sand-50/50">
+              <Files className="w-12 h-12 text-sand-300 mx-auto mb-3" />
+              <p className="text-sand-500">Nenhum documento encontrado.</p>
+              <p className="text-sm text-sand-400">Clique em "Novo Documento" para começar.</p>
           </div>
       ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredItems.map(item => (
-                  <Card key={item.id} className="group hover:shadow-md transition-all duration-200 flex flex-col h-full border-gray-100">
+                  <Card key={item.id} className="group hover:-translate-y-0.5 hover:border-sand-300 transition-all duration-200 flex flex-col h-full">
                       <div className="flex items-start justify-between mb-4">
-                          <div className="bg-gray-50 p-3 rounded-lg group-hover:bg-indigo-50 transition-colors">
+                          <div className="bg-sand-50 p-3 rounded-lg group-hover:bg-brand-50 transition-colors">
                               {getFileIcon(item.receiptUrl)}
                           </div>
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button 
                                   onClick={() => handleDelete(item.id)}
-                                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  className="p-2 text-sand-400 hover:text-clay-500 hover:bg-clay-50 rounded-lg transition-colors"
                                   title="Excluir"
                               >
                                   <Trash2 className="w-4 h-4" />
@@ -171,27 +171,27 @@ export const DocumentModule: React.FC = () => {
                       </div>
                       
                       <div className="flex-1">
-                          <h3 className="font-semibold text-gray-800 line-clamp-2 mb-1" title={item.description}>
+                          <h3 className="font-semibold text-sand-800 line-clamp-2 mb-1" title={item.description}>
                               {item.description}
                           </h3>
-                          <div className="flex items-center gap-1 text-xs text-gray-400 mb-4">
+                          <div className="flex items-center gap-1 text-xs text-sand-400 mb-4">
                               <CalendarDays className="w-3 h-3" />
                               {new Date(item.date).toLocaleDateString('pt-BR')}
                           </div>
                       </div>
 
-                      <div className="pt-4 border-t border-gray-50 mt-auto">
+                      <div className="pt-4 border-t border-sand-50 mt-auto">
                           {item.receiptUrl ? (
                               <a 
                                   href={item.receiptUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  className="flex items-center justify-center gap-2 w-full py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
+                                  className="flex items-center justify-center gap-2 w-full py-2 bg-brand-50 text-brand-600 rounded-lg text-sm font-medium hover:bg-brand-100 transition-colors"
                               >
                                   <ExternalLink className="w-4 h-4" /> Visualizar Arquivo
                               </a>
                           ) : (
-                              <button disabled className="w-full py-2 bg-gray-100 text-gray-400 rounded-lg text-sm cursor-not-allowed">
+                              <button disabled className="w-full py-2 bg-sand-100 text-sand-400 rounded-lg text-sm cursor-not-allowed">
                                   Arquivo Indisponível
                               </button>
                           )}
@@ -217,18 +217,18 @@ export const DocumentModule: React.FC = () => {
             disabled={isSaving}
           />
 
-          <div className={`bg-gray-50 p-6 rounded-xl border-2 border-dashed transition-colors text-center ${selectedFiles.length > 0 ? 'border-indigo-400 bg-indigo-50/30' : 'border-gray-200 hover:border-indigo-300'}`}>
+          <div className={`bg-sand-50 p-6 rounded-xl border-2 border-dashed transition-colors text-center ${selectedFiles.length > 0 ? 'border-brand-400 bg-brand-50/30' : 'border-sand-200 hover:border-brand-300'}`}>
              <div className="mb-4 flex justify-center">
                  <div className="p-3 bg-white rounded-full shadow-sm">
-                     <Download className="w-6 h-6 text-indigo-500" />
+                     <Download className="w-6 h-6 text-brand-500" />
                  </div>
              </div>
              
              <label htmlFor="file-upload" className="cursor-pointer">
-                 <span className="block font-medium text-indigo-600 hover:text-indigo-800 mb-1">
+                 <span className="block font-medium text-brand-600 hover:text-brand-800 mb-1">
                      Clique para selecionar arquivos
                  </span>
-                 <span className="block text-xs text-gray-400">
+                 <span className="block text-xs text-sand-400">
                      PDF, JPG ou PNG (Você pode selecionar vários)
                  </span>
                  <input
@@ -246,23 +246,23 @@ export const DocumentModule: React.FC = () => {
           {/* Lista de Arquivos Selecionados */}
           {selectedFiles.length > 0 && (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Arquivos selecionados ({selectedFiles.length})</p>
+                  <p className="text-xs font-bold text-sand-400 uppercase tracking-wider">Arquivos selecionados ({selectedFiles.length})</p>
                   {selectedFiles.map((file, index) => (
-                      <div key={index} className="p-3 bg-white rounded-lg border border-gray-200 flex items-center gap-3 text-left group">
+                      <div key={index} className="p-3 bg-white rounded-lg border border-sand-200 flex items-center gap-3 text-left group">
                           {file.type.includes('pdf') ? (
-                              <FileText className="w-6 h-6 text-red-500 flex-shrink-0" />
+                              <FileText className="w-6 h-6 text-clay-500 flex-shrink-0" />
                           ) : (
-                              <FileImage className="w-6 h-6 text-indigo-500 flex-shrink-0" />
+                              <FileImage className="w-6 h-6 text-brand-500 flex-shrink-0" />
                           )}
                           <div className="flex-1 overflow-hidden">
-                              <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
-                              <p className="text-[10px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                              <p className="text-sm font-medium text-sand-700 truncate">{file.name}</p>
+                              <p className="text-[10px] text-sand-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                           </div>
                           {!isSaving && (
                               <button 
                                 type="button"
                                 onClick={() => removeFile(index)}
-                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1 text-sand-400 hover:text-clay-500 hover:bg-clay-50 rounded transition-colors"
                               >
                                   <X className="w-4 h-4" />
                               </button>
@@ -275,13 +275,13 @@ export const DocumentModule: React.FC = () => {
           {/* Barra de Progresso durante salvamento */}
           {isSaving && (
               <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-medium text-indigo-600">
+                  <div className="flex justify-between text-xs font-medium text-brand-600">
                       <span>Enviando arquivos...</span>
                       <span>{uploadProgress.current} de {uploadProgress.total}</span>
                   </div>
-                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-sand-100 h-2 rounded-full overflow-hidden">
                       <div 
-                        className="bg-indigo-500 h-full transition-all duration-300"
+                        className="bg-brand-500 h-full transition-all duration-300"
                         style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
                       ></div>
                   </div>

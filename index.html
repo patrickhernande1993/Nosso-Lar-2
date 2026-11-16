@@ -3,37 +3,72 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Nosso Lar - Gestão</title>
-    <!-- Tailwind CSS via CDN is fine for quick styling. -->
+    <meta name="theme-color" content="#14302a" />
+    <title>Nosso Lar · Gestão</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
+            },
+            colors: {
+              // Verde-musgo: cor principal da marca
+              brand: {
+                50: '#eff6f2', 100: '#d9eae1', 200: '#b3d5c4', 300: '#84b9a0',
+                400: '#56987b', 500: '#3a7d61', 600: '#2f6b57', 700: '#265546',
+                800: '#1e4439', 900: '#183830', 950: '#0f241f',
+              },
+              // Terracota: valores em aberto / alertas suaves
+              clay: {
+                50: '#fcf4ee', 100: '#f8e4d6', 200: '#f0c7ab', 300: '#e4a178',
+                400: '#d6824f', 500: '#c46a3c', 600: '#a65430', 700: '#854229',
+              },
+              // Areia: fundos e neutros quentes
+              sand: {
+                50: '#faf8f4', 100: '#f4f0e8', 200: '#e8e1d4', 300: '#d7cdbb',
+                400: '#b3a68f', 500: '#8c806b', 600: '#6b6252', 700: '#4f483d',
+                800: '#38332c', 900: '#25221e',
+              },
+            },
+            boxShadow: {
+              soft: '0 1px 2px rgba(37,34,30,0.04), 0 8px 24px -12px rgba(37,34,30,0.12)',
+            },
+          },
+        },
+      };
+    </script>
     <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8fafc; /* Um cinza ainda mais leve */
+      html, body { background-color: #f4f0e8; }
+      body { font-family: 'Manrope', system-ui, sans-serif; color: #25221e; -webkit-font-smoothing: antialiased; }
+      .tabular { font-variant-numeric: tabular-nums; }
+      ::selection { background: #b3d5c4; }
+      .scroll-thin::-webkit-scrollbar { width: 6px; }
+      .scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+      .scroll-thin-light::-webkit-scrollbar { width: 6px; }
+      .scroll-thin-light::-webkit-scrollbar-thumb { background: #e8e1d4; border-radius: 999px; }
+      select.select-clean {
+        -webkit-appearance: none; appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238c806b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 0.75rem center;
       }
+      @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      .animate-rise { animation: rise .35s ease-out both; }
+      /* Só opacidade: transform no contêiner da página quebraria modais com position: fixed */
+      .animate-fade { animation: fade .3s ease-out both; }
+      @media (prefers-reduced-motion: reduce) { .animate-rise, .animate-fade { animation: none; } }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0?deps=react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0",
-    "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?deps=react@18.2.0,react-dom@18.2.0",
-    "recharts": "https://esm.sh/recharts@2.12.2?deps=react@18.2.0,react-dom@18.2.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.7",
-    "vite": "https://esm.sh/vite@^7.2.7",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.2/"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
-    <!-- Vite entry point -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

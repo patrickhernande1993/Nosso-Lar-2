@@ -52,7 +52,7 @@ export const StorageService = {
 
     return data.map((item: any) => ({
       id: item.id,
-      type: item.type as ExpenseType,
+      type: item.type as string,
       description: item.description,
       amount: item.amount,
       date: item.date,
@@ -63,7 +63,7 @@ export const StorageService = {
     }));
   },
 
-  getByType: async (type: ExpenseType): Promise<ExpenseItem[]> => {
+  getByType: async (type: string): Promise<ExpenseItem[]> => {
     const { data, error } = await supabase
       .from('expenses')
       .select('*')
@@ -76,7 +76,7 @@ export const StorageService = {
 
     return data.map((item: any) => ({
       id: item.id,
-      type: item.type as ExpenseType,
+      type: item.type as string,
       description: item.description,
       amount: item.amount,
       date: item.date,

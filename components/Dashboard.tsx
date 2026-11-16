@@ -1,298 +1,576 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Loader2, Building2, HeartHandshake, Filter, Calendar, XCircle, ChevronDown, CheckCircle2, Clock } from 'lucide-react';
+import { Loader2, ArrowUpRight, CalendarClock, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Search, Paperclip, RotateCcw } from 'lucide-react';
 import { StorageService } from '../services/storage';
-import { ExpenseType, ExpenseItem } from '../types';
-import { Card } from './UI';
+import { ExpenseItem, ExpenseShare } from '../types';
+import { ShareService } from '../services/payerStorage';
+import { usePayers, initials } from '../lib/PayersContext';
+import { Card, PageHeader, StatusBadge } from './UI';
+import { categoryPath, formatBRL, getCategoryIcon } from '../lib/categories';
+import { useCategories } from '../lib/CategoriesContext';
 
-// Paleta de Cores Apartamento (Tons Frios/Neutros)
-const APT_COLORS = [
-  '#6366f1', // Indigo (Parcelas)
-  '#10b981', // Emerald (Notas)
-  '#f59e0b', // Amber (Taxas)
-  '#a855f7', // Purple (IPTU)
-  '#ec4899', // Pink (Móveis)
-  '#3b82f6', // Blue (Energia)
-];
+const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const MONTHS_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-// Paleta de Cores Casamento (Tons Quentes/Vibrantes)
-const WED_COLORS = [
-  '#ef4444', // Red (Espaço)
-  '#f97316', // Orange (Buffet)
-  '#eab308', // Yellow (Cerimonialista)
-  '#14b8a6', // Teal (Fotógrafo)
-  '#8b5cf6', // Violet (Decoração)
-  '#06b6d4', // Cyan (Bar)
-];
+const compactBRL = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 }).format(v);
+const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+const formatShortDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
+const sum = (items: ExpenseItem[]) => items.reduce((acc, i) => acc + i.amount, 0);
 
-const MONTHS = [
-  { value: '01', label: 'Janeiro' },
-  { value: '02', label: 'Fevereiro' },
-  { value: '03', label: 'Março' },
-  { value: '04', label: 'Abril' },
-  { value: '05', label: 'Maio' },
-  { value: '06', label: 'Junho' },
-  { value: '07', label: 'Julho' },
-  { value: '08', label: 'Agosto' },
-  { value: '09', label: 'Setembro' },
-  { value: '10', label: 'Outubro' },
-  { value: '11', label: 'Novembro' },
-  { value: '12', label: 'Dezembro' },
-];
+const now = new Date();
+const CURRENT_YEAR = String(now.getFullYear());
+const CURRENT_MONTH = String(now.getMonth() + 1).padStart(2, '0');
 
-const APT_TYPES = [ExpenseType.INSTALLMENT, ExpenseType.NOTE, ExpenseType.FEE, ExpenseType.IPTU, ExpenseType.FURNITURE, ExpenseType.UTILITIES];
-const WED_TYPES = [ExpenseType.EVENT_SPACE, ExpenseType.BUFFET, ExpenseType.CEREMONIALIST, ExpenseType.PHOTOGRAPHER, ExpenseType.DECORATION, ExpenseType.NON_ALCOHOLIC_BAR];
+const tooltipStyle = {
+  borderRadius: 12,
+  border: '1px solid #e8e1d4',
+  boxShadow: '0 10px 30px -12px rgba(37,34,30,.25)',
+  fontSize: 12,
+  fontFamily: 'Manrope',
+};
 
-interface ChartData {
-  name: string;
-  value: number;
-  type: ExpenseType;
-}
+const selectCls =
+  'select-clean pl-3.5 pr-9 py-2.5 bg-white border border-sand-200 rounded-xl text-sm font-medium text-sand-800 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500';
 
-interface FinancialSummary {
-  total: number;
-  paid: number;
-  pending: number;
-}
+type StatusFilter = 'ALL' | 'PENDING' | 'PAID';
 
 export const Dashboard: React.FC = () => {
-  const [allItems, setAllItems] = useState<ExpenseItem[]>([]);
+  const { categories, isLoading: categoriesLoading } = useCategories();
+  const [rawItems, setRawItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  const [selectedYear, setSelectedYear] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('');
+  // Por padrão a visão geral abre no mês corrente.
+  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [search, setSearch] = useState('');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [shares, setShares] = useState<ExpenseShare[]>([]);
+  const { payers, payerById } = usePayers();
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const items = await StorageService.getAll();
-        setAllItems(items);
-      } catch (e) {
-        console.error("Error loading dashboard", e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
+    Promise.all([StorageService.getAll(), ShareService.getAll()])
+      .then(([items, allShares]) => {
+        setRawItems(items);
+        setShares(allShares);
+      })
+      .catch(e => console.error('Error loading dashboard', e))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const availableYears = useMemo(() => {
-    const years = new Set(allItems.map(item => item.date.split('-')[0]));
-    return Array.from(years).sort().reverse();
-  }, [allItems]);
+  const categoryByKey = useMemo(() => new Map(categories.map(c => [c.key, c])), [categories]);
+  const sharesByExpense = useMemo(() => {
+    const map = new Map<string, ExpenseShare[]>();
+    shares.forEach(s => map.set(s.expenseId, [...(map.get(s.expenseId) ?? []), s]));
+    return map;
+  }, [shares]);
 
-  const { 
-    aptData, aptSummary, 
-    wedData, wedSummary, 
-    displayDate 
-  } = useMemo(() => {
-    const filteredItems = allItems.filter(item => {
-      const [itemYear, itemMonth] = item.date.split('-');
-      const matchYear = selectedYear ? itemYear === selectedYear : true;
-      const matchMonth = selectedMonth ? itemMonth === selectedMonth : true;
-      return matchYear && matchMonth;
+  const toggleReimbursed = async (share: ExpenseShare) => {
+    setTogglingId(share.id);
+    try {
+      await ShareService.setReimbursed(share.id, !share.reimbursed);
+      setShares(prev => prev.map(s => (s.id === share.id ? { ...s, reimbursed: !s.reimbursed } : s)));
+    } catch (e: any) {
+      alert('Erro ao atualizar reembolso: ' + (e?.message || 'verifique o console.'));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+  // Só entram lançamentos de categorias cadastradas (ignora documentos e registros antigos).
+  const allItems = useMemo(() => rawItems.filter(i => categoryByKey.has(i.type)), [rawItems, categoryByKey]);
+
+  const availableYears = useMemo(
+    () => Array.from(new Set([CURRENT_YEAR, ...allItems.map(i => i.date.split('-')[0])])).sort().reverse(),
+    [allItems]
+  );
+
+  const data = useMemo(() => {
+    const items = allItems.filter(item => {
+      const [y, m] = item.date.split('-');
+      return (!selectedYear || y === selectedYear) && (!selectedMonth || m === selectedMonth);
     });
 
-    let dateText = 'Visualização geral acumulada';
-    if (selectedYear && selectedMonth) {
-      const monthName = MONTHS.find(m => m.value === selectedMonth)?.label;
-      dateText = `Visualização de ${monthName} de ${selectedYear}`;
-    } else if (selectedYear) {
-      dateText = `Visualização do ano de ${selectedYear}`;
-    } else if (selectedMonth) {
-      const monthName = MONTHS.find(m => m.value === selectedMonth)?.label;
-      dateText = `Visualização de todos os meses de ${monthName}`;
-    }
+    const paid = sum(items.filter(i => i.status === 'PAID'));
+    const pending = sum(items.filter(i => i.status === 'PENDING'));
 
-    // Cálculos Apartamento
-    const aptItems = filteredItems.filter(i => APT_TYPES.includes(i.type));
-    const installments = aptItems.filter(i => i.type === ExpenseType.INSTALLMENT).reduce((acc, c) => acc + c.amount, 0);
-    const notes = aptItems.filter(i => i.type === ExpenseType.NOTE).reduce((acc, c) => acc + c.amount, 0);
-    const fees = aptItems.filter(i => i.type === ExpenseType.FEE).reduce((acc, c) => acc + c.amount, 0);
-    const iptu = aptItems.filter(i => i.type === ExpenseType.IPTU).reduce((acc, c) => acc + c.amount, 0);
-    const furniture = aptItems.filter(i => i.type === ExpenseType.FURNITURE).reduce((acc, c) => acc + c.amount, 0);
-    const utilities = aptItems.filter(i => i.type === ExpenseType.UTILITIES).reduce((acc, c) => acc + c.amount, 0);
+    const byCategory = categories.map(cat => {
+      const catItems = items.filter(i => i.type === cat.key);
+      const catTotal = sum(catItems);
+      const catPaid = sum(catItems.filter(i => i.status === 'PAID'));
+      return { ...cat, total: catTotal, paid: catPaid, pending: catTotal - catPaid, count: catItems.length };
+    });
 
-    const aptPaid = aptItems.filter(i => i.status === 'PAID').reduce((acc, c) => acc + c.amount, 0);
-    const aptPending = aptItems.filter(i => i.status === 'PENDING').reduce((acc, c) => acc + c.amount, 0);
+    const byMonth = new Map<string, { paid: number; pending: number }>();
+    items.forEach(i => {
+      const key = i.date.slice(0, 7);
+      const row = byMonth.get(key) ?? { paid: 0, pending: 0 };
+      if (i.status === 'PAID') row.paid += i.amount;
+      else row.pending += i.amount;
+      byMonth.set(key, row);
+    });
+    const monthly = Array.from(byMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => {
+        const [y, m] = key.split('-');
+        return { name: `${MONTHS_SHORT[Number(m) - 1]}/${y.slice(2)}`, ...v };
+      });
 
-    const aptChartData = [
-      { name: 'Financiamento Ap.', value: installments, type: ExpenseType.INSTALLMENT },
-      { name: 'Notas Promissórias', value: notes, type: ExpenseType.NOTE },
-      { name: 'Taxas de Condomínio', value: fees, type: ExpenseType.FEE },
-      { name: 'IPTU', value: iptu, type: ExpenseType.IPTU },
-      { name: 'Móveis Planejados', value: furniture, type: ExpenseType.FURNITURE },
-      { name: 'Energia Elétrica', value: utilities, type: ExpenseType.UTILITIES },
-    ].filter(item => item.value > 0);
+    let period = 'Todo o período';
+    if (selectedYear && selectedMonth) period = `${MONTHS[Number(selectedMonth) - 1]} de ${selectedYear}`;
+    else if (selectedYear) period = `Ano de ${selectedYear}`;
+    else if (selectedMonth) period = `${MONTHS[Number(selectedMonth) - 1]} (todos os anos)`;
 
-    // Cálculos Casamento
-    const wedItems = filteredItems.filter(i => WED_TYPES.includes(i.type));
-    const eventSpace = wedItems.filter(i => i.type === ExpenseType.EVENT_SPACE).reduce((acc, c) => acc + c.amount, 0);
-    const buffet = wedItems.filter(i => i.type === ExpenseType.BUFFET).reduce((acc, c) => acc + c.amount, 0);
-    const ceremonialist = wedItems.filter(i => i.type === ExpenseType.CEREMONIALIST).reduce((acc, c) => acc + c.amount, 0);
-    const photographer = wedItems.filter(i => i.type === ExpenseType.PHOTOGRAPHER).reduce((acc, c) => acc + c.amount, 0);
-    const decoration = wedItems.filter(i => i.type === ExpenseType.DECORATION).reduce((acc, c) => acc + c.amount, 0);
-    const bar = wedItems.filter(i => i.type === ExpenseType.NON_ALCOHOLIC_BAR).reduce((acc, c) => acc + c.amount, 0);
-
-    const wedPaid = wedItems.filter(i => i.status === 'PAID').reduce((acc, c) => acc + c.amount, 0);
-    const wedPending = wedItems.filter(i => i.status === 'PENDING').reduce((acc, c) => acc + c.amount, 0);
-
-    const wedChartData = [
-      { name: 'Espaço Evento', value: eventSpace, type: ExpenseType.EVENT_SPACE },
-      { name: 'Buffet', value: buffet, type: ExpenseType.BUFFET },
-      { name: 'Cerimonialista', value: ceremonialist, type: ExpenseType.CEREMONIALIST },
-      { name: 'Fotógrafo', value: photographer, type: ExpenseType.PHOTOGRAPHER },
-      { name: 'Decoração', value: decoration, type: ExpenseType.DECORATION },
-      { name: 'Bar sem álcool', value: bar, type: ExpenseType.NON_ALCOHOLIC_BAR },
-    ].filter(item => item.value > 0);
+    // Divisões das despesas do período
+    const periodShares = items.flatMap(i => sharesByExpense.get(String(i.id)) ?? []);
+    const others = periodShares.reduce((a, s) => a + s.amount, 0);
+    const toReceive = periodShares.filter(s => !s.reimbursed).reduce((a, s) => a + s.amount, 0);
+    const itemById = new Map(items.map(i => [String(i.id), i]));
+    const byPayer = payers
+      .map(p => {
+        const ps = periodShares.filter(s => s.payerId === p.id);
+        return {
+          payer: p,
+          shares: ps.map(s => ({ share: s, item: itemById.get(s.expenseId)! })).sort((a, b) => a.item.date.localeCompare(b.item.date)),
+          pending: ps.filter(s => !s.reimbursed).reduce((a, s) => a + s.amount, 0),
+          received: ps.filter(s => s.reimbursed).reduce((a, s) => a + s.amount, 0),
+        };
+      })
+      .filter(g => g.shares.length > 0);
 
     return {
-      aptData: aptChartData,
-      aptSummary: { total: aptPaid + aptPending, paid: aptPaid, pending: aptPending },
-      wedData: wedChartData,
-      wedSummary: { total: wedPaid + wedPending, paid: wedPaid, pending: wedPending },
-      displayDate: dateText
+      items, paid, pending, total: paid + pending, byCategory, monthly, period,
+      mine: paid + pending - others, toReceive, byPayer, hasShares: periodShares.length > 0,
     };
-  }, [allItems, selectedYear, selectedMonth]);
+  }, [allItems, categories, selectedYear, selectedMonth, sharesByExpense, payers]);
 
-  const renderSection = (title: string, icon: React.ReactNode, data: ChartData[], summary: FinancialSummary, colors: string[]) => {
-    const paidPercentage = summary.total > 0 ? (summary.paid / summary.total) * 100 : 0;
-    
+  const listItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return data.items
+      .filter(i => statusFilter === 'ALL' || i.status === statusFilter)
+      .filter(i => !q || i.description.toLowerCase().includes(q) || categoryByKey.get(i.type)?.name.toLowerCase().includes(q))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.description.localeCompare(b.description));
+  }, [data.items, statusFilter, search, categoryByKey]);
+
+  // Vencimentos são sempre calculados sobre todos os lançamentos, independente do filtro.
+  const dueInfo = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const open = allItems.filter(i => i.status === 'PENDING').sort((a, b) => a.date.localeCompare(b.date));
+    const overdue = open.filter(i => i.date < today);
+    return { overdueCount: overdue.length, overdueAmount: sum(overdue), next: open.find(i => i.date >= today), today };
+  }, [allItems]);
+
+  const shiftMonth = (delta: number) => {
+    let m = Number(selectedMonth) + delta;
+    let y = Number(selectedYear);
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    setSelectedMonth(String(m).padStart(2, '0'));
+    setSelectedYear(String(y));
+  };
+
+  const toggleStatus = async (item: ExpenseItem) => {
+    const updated: ExpenseItem = { ...item, status: item.status === 'PAID' ? 'PENDING' : 'PAID' };
+    setTogglingId(item.id);
+    try {
+      await StorageService.update(updated);
+      setRawItems(prev => prev.map(i => (i.id === item.id ? updated : i)));
+    } catch (e: any) {
+      alert('Erro ao atualizar status: ' + (e?.message || 'verifique o console.'));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  if (isLoading || categoriesLoading) {
     return (
-      <div className="space-y-4 mb-10">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-            {icon}
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+  const paidPct = data.total > 0 ? (data.paid / data.total) * 100 : 0;
+  const pieData = data.byCategory.filter(c => c.total > 0);
+  const isSingleMonth = !!(selectedYear && selectedMonth);
+  const isCurrentMonth = selectedYear === CURRENT_YEAR && selectedMonth === CURRENT_MONTH;
+  const nextCategory = dueInfo.next && categoryByKey.get(dueInfo.next.type);
+  const counts = {
+    ALL: data.items.length,
+    PENDING: data.items.filter(i => i.status === 'PENDING').length,
+    PAID: data.items.filter(i => i.status === 'PAID').length,
+  };
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Visão geral"
+        title={data.period}
+        description="Todas as despesas do período, somando todas as categorias."
+        actions={
+          <div className="flex items-center gap-2 w-full">
+            {isSingleMonth && (
+              <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" className="p-2.5 rounded-xl border border-sand-200 bg-white text-sand-600 hover:bg-sand-50 transition">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            <select aria-label="Mês" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={`${selectCls} flex-1 md:w-40`}>
+              <option value="">Todos os meses</option>
+              {MONTHS.map((m, i) => (
+                <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
+              ))}
+            </select>
+            <select aria-label="Ano" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className={`${selectCls} flex-1 md:w-32`}>
+              <option value="">Todos os anos</option>
+              {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            {isSingleMonth && (
+              <button onClick={() => shiftMonth(1)} aria-label="Próximo mês" className="p-2.5 rounded-xl border border-sand-200 bg-white text-sand-600 hover:bg-sand-50 transition">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {!isCurrentMonth && (
+              <button
+                onClick={() => { setSelectedYear(CURRENT_YEAR); setSelectedMonth(CURRENT_MONTH); }}
+                title="Voltar para o mês atual"
+                aria-label="Voltar para o mês atual"
+                className="p-2.5 rounded-xl border border-sand-200 bg-white text-sand-500 hover:text-brand-700 hover:border-brand-200 transition"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+        }
+      />
+
+      {/* Resumo */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="lg:col-span-2 relative overflow-hidden rounded-3xl bg-brand-900 text-white p-6 md:p-8">
+          <div className="absolute -right-16 -top-24 w-72 h-72 rounded-full bg-brand-500/20 blur-3xl pointer-events-none" />
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-200/70">Total de despesas · {data.period}</p>
+          <p className="font-display text-4xl md:text-5xl font-semibold mt-2 tabular">{formatBRL(data.total)}</p>
+
+          <div className="mt-8">
+            <div className="flex justify-between text-xs text-brand-100/70 mb-2">
+              <span>{Math.round(paidPct)}% pago</span>
+              <span>{data.items.length} {data.items.length === 1 ? 'lançamento' : 'lançamentos'}</span>
+            </div>
+            <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full rounded-full bg-brand-300 transition-all duration-700" style={{ width: `${paidPct}%` }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:gap-4 mt-6">
+            {[
+              { label: 'Pago', value: data.paid, dot: 'bg-brand-300' },
+              { label: 'Falta pagar', value: data.pending, dot: 'bg-clay-300' },
+              ...(data.hasShares
+                ? [
+                    { label: 'Minha parte', value: data.mine, dot: 'bg-white' },
+                    { label: 'A receber', value: data.toReceive, dot: 'bg-sky-300' },
+                  ]
+                : []),
+            ].map(s => (
+              <div key={s.label} className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 min-w-0">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand-200/70 whitespace-nowrap">
+                  <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} /> {s.label}
+                </p>
+                <p className="text-lg md:text-xl font-bold mt-1 tabular truncate">{formatBRL(s.value)}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2 border-indigo-50 shadow-indigo-100">
-            <h3 className="text-lg font-bold text-slate-800 mb-1">Distribuição de Despesas</h3>
-            <p className="text-sm text-slate-400 mb-6">{displayDate}</p>
-            <div className="h-60 md:h-72 w-full">
-              {data.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data} layout="vertical" margin={{ left: 0, right: 30 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                    <XAxis type="number" hide />
-                    <YAxis dataKey="name" type="category" width={120} tick={{fontSize: 11, fill: '#64748b'}} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{fill: '#f8fafc'}} formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={20}>
-                      {data.map((entry, index) => <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm flex-col gap-2">
-                  <Filter className="w-8 h-8 opacity-20" />
-                  Nenhum registro encontrado para este período.
-                </div>
-              )}
+        <div className="grid grid-rows-2 gap-4">
+          <Card className="flex flex-col justify-between">
+            <div className="flex items-center gap-2 text-sand-500 text-xs font-semibold uppercase tracking-wider">
+              <CalendarClock className="w-4 h-4 text-brand-600" /> Próximo vencimento
             </div>
+            {dueInfo.next ? (
+              <div className="mt-3">
+                <p className="text-2xl font-bold text-sand-900 tabular">{formatBRL(dueInfo.next.amount)}</p>
+                <p className="text-sm text-sand-500 mt-1 line-clamp-1">
+                  {formatDate(dueInfo.next.date)} · {nextCategory?.name ?? dueInfo.next.description}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-sand-500">Nenhum pagamento futuro em aberto.</p>
+            )}
           </Card>
+          <Card className={`flex flex-col justify-between ${dueInfo.overdueCount > 0 ? 'bg-clay-50 border-clay-200' : ''}`}>
+            {dueInfo.overdueCount > 0 ? (
+              <>
+                <div className="flex items-center gap-2 text-clay-700 text-xs font-semibold uppercase tracking-wider">
+                  <AlertCircle className="w-4 h-4" /> Em atraso (geral)
+                </div>
+                <div className="mt-3">
+                  <p className="text-2xl font-bold text-clay-700 tabular">{formatBRL(dueInfo.overdueAmount)}</p>
+                  <p className="text-sm text-clay-600/80 mt-1">
+                    {dueInfo.overdueCount} {dueInfo.overdueCount === 1 ? 'lançamento vencido' : 'lançamentos vencidos'} sem pagamento
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-brand-700 text-xs font-semibold uppercase tracking-wider">
+                  <CheckCircle2 className="w-4 h-4" /> Em dia
+                </div>
+                <p className="mt-3 text-sm text-sand-500">Nenhum lançamento vencido. Tudo certo por aqui.</p>
+              </>
+            )}
+          </Card>
+        </div>
+      </div>
 
-          <Card className="border-indigo-50 shadow-indigo-100 flex flex-col">
-            <div className="mb-4">
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Total Consolidado</h3>
-              <p className="text-sm text-slate-400">{title}</p>
+      {/* Lançamentos do período */}
+      <Card className="p-0 overflow-hidden mt-10">
+        <div className="px-5 pt-5 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-semibold text-sand-900">Lançamentos</h2>
+            <p className="text-xs text-sand-400">{data.period} · todas as categorias</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="tablist">
+              {([['ALL', 'Todos'], ['PENDING', 'Em aberto'], ['PAID', 'Pagos']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  role="tab"
+                  aria-selected={statusFilter === value}
+                  onClick={() => setStatusFilter(value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                    statusFilter === value ? 'bg-white shadow-sm text-sand-900' : 'text-sand-500 hover:text-sand-800'
+                  }`}
+                >
+                  {label} <span className="text-sand-400 font-medium">{counts[value]}</span>
+                </button>
+              ))}
             </div>
-            
-            <div className="h-48 w-full flex items-center justify-center relative flex-shrink-0">
-              {summary.total > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={data} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
-                      {data.map((entry, index) => <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-32 w-32 rounded-full border-4 border-gray-100 flex items-center justify-center">
-                  <span className="text-gray-300">R$ 0</span>
-                </div>
-              )}
-              {summary.total > 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
-                  <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total</span>
-                  <span className="font-bold text-2xl text-slate-800">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(summary.total)}
-                  </span>
-                </div>
-              )}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-sand-200 bg-sand-50/60 focus-within:bg-white focus-within:border-brand-500">
+              <Search className="w-4 h-4 text-sand-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="bg-transparent text-sm outline-none w-full sm:w-36 placeholder-sand-400" />
             </div>
+          </div>
+        </div>
 
-            {summary.total > 0 && (
-              <div className="mt-4 pt-4 border-t border-dashed border-gray-100">
-                <div className="flex justify-between items-center text-xs text-gray-500 mb-1.5">
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-500"/> Pago ({Math.round(paidPercentage)}%)</span>
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-amber-500"/> Falta Pagar</span>
-                </div>
-                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden flex mb-3">
-                  <div className="bg-green-500 h-full transition-all duration-500" style={{ width: `${paidPercentage}%` }} />
-                  <div className="bg-amber-400 h-full transition-all duration-500" style={{ width: `${100 - paidPercentage}%` }} />
-                </div>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <span className="block text-[10px] text-gray-400 uppercase font-semibold">Quitado</span>
-                    <span className="text-sm font-bold text-green-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.paid)}</span>
+        {listItems.length === 0 ? (
+          <div className="py-14 text-center border-t border-sand-100">
+            <p className="text-sand-600 font-medium">Nenhum lançamento encontrado</p>
+            <p className="text-sm text-sand-400 mt-1">Tente outro período ou filtro.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-sand-100 border-t border-sand-100 max-h-[560px] overflow-y-auto scroll-thin-light">
+            {listItems.map(item => {
+              const cat = categoryByKey.get(item.type)!;
+              const Icon = getCategoryIcon(cat.icon);
+              const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
+              return (
+                <li key={item.id} className="flex items-center gap-3 md:gap-4 px-5 py-3 hover:bg-sand-50/60 transition-colors">
+                  <div className="grid place-items-center w-9 h-9 rounded-lg flex-shrink-0" style={{ backgroundColor: `${cat.color}1a`, color: cat.color }}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-sand-900 truncate">{item.description}</p>
+                    <p className="text-xs text-sand-400 truncate">
+                      <Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
+                      <span className={overdue ? 'text-clay-600 font-semibold' : ''}> · vence {formatShortDate(item.date)}{overdue && ' · vencido'}</span>
+                    </p>
+                  </div>
+                  {item.receiptUrl && (
+                    <a href={item.receiptUrl} target="_blank" rel="noopener noreferrer" title="Ver comprovante" className="hidden sm:grid place-items-center p-1.5 rounded-lg text-brand-700 hover:bg-brand-50">
+                      <Paperclip className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button
+                    onClick={() => toggleStatus(item)}
+                    disabled={togglingId === item.id}
+                    title={item.status === 'PAID' ? 'Marcar como em aberto' : 'Marcar como pago'}
+                    className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
+                  >
+                    {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} />}
+                  </button>
+                  <div className="w-24 md:w-28 text-right flex-shrink-0">
+                    <span className="block text-sm font-semibold text-sand-900 tabular">{formatBRL(item.amount)}</span>
+                    {(() => {
+                      const itemShares = sharesByExpense.get(String(item.id));
+                      if (!itemShares?.length) return null;
+                      const mine = item.amount - itemShares.reduce((a, s) => a + s.amount, 0);
+                      return (
+                        <span className="flex items-center justify-end gap-1 mt-0.5" title={itemShares.map(s => `${payerById.get(s.payerId)?.name}: ${formatBRL(s.amount)}`).join('\n')}>
+                          <span className="flex -space-x-1">
+                            {itemShares.map(s => (
+                              <span key={s.id} className="w-3 h-3 rounded-full ring-1 ring-white" style={{ backgroundColor: payerById.get(s.payerId)?.color ?? '#b3a68f' }} />
+                            ))}
+                          </span>
+                          <span className="text-[11px] text-sand-400 tabular">sua {formatBRL(mine)}</span>
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {listItems.length > 0 && (
+          <div className="flex justify-between px-5 py-3 border-t border-sand-100 bg-sand-50/70 text-sm">
+            <span className="text-sand-500">{listItems.length} {listItems.length === 1 ? 'item' : 'itens'}</span>
+            <span className="font-bold text-sand-900 tabular">{formatBRL(sum(listItems))}</span>
+          </div>
+        )}
+      </Card>
+
+      {/* A receber por pagante */}
+      {data.byPayer.length > 0 && (
+        <>
+          <h2 className="font-display text-xl font-semibold text-sand-900 mt-10 mb-1">A receber</h2>
+          <p className="text-xs text-sand-400 mb-4">Partes de outras pessoas nas despesas de {data.period.toLowerCase()}. Clique em uma parte para marcar o reembolso.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.byPayer.map(group => (
+              <Card key={group.payer.id} className="p-0 overflow-hidden">
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-sand-100">
+                  <div className="grid place-items-center w-10 h-10 rounded-full text-sm font-bold text-white flex-shrink-0" style={{ backgroundColor: group.payer.color }}>
+                    {initials(group.payer.name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sand-900 text-sm truncate">{group.payer.name}</p>
+                    <p className="text-xs text-sand-400">{formatBRL(group.received)} já reembolsado</p>
                   </div>
                   <div className="text-right">
-                    <span className="block text-[10px] text-gray-400 uppercase font-semibold">Saldo Devedor</span>
-                    <span className="text-sm font-bold text-amber-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.pending)}</span>
+                    <p className={`text-lg font-bold tabular ${group.pending > 0 ? 'text-[#5279a3]' : 'text-brand-700'}`}>{formatBRL(group.pending)}</p>
+                    <p className="text-[11px] text-sand-400">{group.pending > 0 ? 'a receber' : 'tudo recebido'}</p>
+                  </div>
+                </div>
+                <ul className="divide-y divide-sand-100 max-h-64 overflow-y-auto scroll-thin-light">
+                  {group.shares.map(({ share, item }) => (
+                    <li key={share.id} className="flex items-center gap-3 px-5 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-sand-800 truncate">{item.description}</p>
+                        <p className="text-[11px] text-sand-400">vence {formatShortDate(item.date)} · total {formatBRL(item.amount)}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-sand-900 tabular">{formatBRL(share.amount)}</span>
+                      <button
+                        onClick={() => toggleReimbursed(share)}
+                        disabled={togglingId === share.id}
+                        title={share.reimbursed ? 'Marcar como não reembolsado' : 'Marcar como reembolsado'}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition disabled:opacity-50 ${
+                          share.reimbursed ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/15' : 'bg-sky-50 text-[#3d5f85] ring-1 ring-inset ring-[#5279a3]/20 hover:bg-sky-100'
+                        }`}
+                      >
+                        {togglingId === share.id ? <Loader2 className="w-3 h-3 animate-spin" /> : share.reimbursed ? <><CheckCircle2 className="w-3 h-3" /> Recebido</> : 'A receber'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Categorias */}
+      <h2 className="font-display text-xl font-semibold text-sand-900 mt-10 mb-4">Por categoria</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {data.byCategory.map(cat => {
+          const Icon = getCategoryIcon(cat.icon);
+          const pct = cat.total > 0 ? (cat.paid / cat.total) * 100 : 0;
+          return (
+            <Link
+              key={cat.key}
+              to={categoryPath(cat.key)}
+              className={`group bg-white rounded-2xl border border-sand-200 shadow-soft p-5 hover:border-sand-300 hover:-translate-y-0.5 transition-all ${cat.count === 0 ? 'opacity-60' : ''}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="grid place-items-center w-10 h-10 rounded-xl" style={{ backgroundColor: `${cat.color}1a`, color: cat.color }}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sand-900 text-sm">{cat.name}</p>
+                    <p className="text-xs text-sand-400">{cat.count} {cat.count === 1 ? 'lançamento' : 'lançamentos'}</p>
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-sand-300 group-hover:text-sand-600 transition" />
+              </div>
+              <p className="text-2xl font-bold text-sand-900 mt-5 tabular">{formatBRL(cat.total)}</p>
+              <div className="h-1.5 rounded-full bg-sand-100 mt-3 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: cat.color }} />
+              </div>
+              <div className="flex justify-between text-xs mt-2">
+                <span className="text-sand-500">{cat.count ? `${Math.round(pct)}% pago` : 'Sem lançamentos'}</span>
+                <span className={cat.pending > 0 ? 'text-clay-600 font-medium' : 'text-sand-400'}>
+                  {cat.pending > 0 ? `${formatBRL(cat.pending)} em aberto` : cat.count ? 'Nada em aberto' : ''}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Gráficos */}
+      {pieData.length > 0 && (
+        <div className={`grid grid-cols-1 gap-4 mt-10 ${isSingleMonth ? '' : 'lg:grid-cols-5'}`}>
+          <Card className={isSingleMonth ? '' : 'lg:col-span-2'}>
+            <h3 className="font-display text-lg font-semibold text-sand-900">Distribuição</h3>
+            <p className="text-xs text-sand-400 mb-2">Participação de cada categoria no total</p>
+            <div className={isSingleMonth ? 'grid md:grid-cols-2 gap-6 items-center' : ''}>
+              <div className="relative h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="total" nameKey="name" innerRadius={68} outerRadius={92} paddingAngle={2} stroke="none">
+                      {pieData.map(c => <Cell key={c.key} fill={c.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={tooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 grid place-items-center pointer-events-none text-center">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-sand-400 font-semibold">Total</p>
+                    <p className="font-display text-2xl font-semibold text-sand-900">{compactBRL(data.total)}</p>
                   </div>
                 </div>
               </div>
-            )}
-
-            <div className="space-y-3 mt-4 pt-4 border-t border-gray-50 flex-1 overflow-y-auto max-h-40 scrollbar-thin scrollbar-thumb-gray-100">
-              {data.map((item, idx) => (
-                <div key={item.name} className="flex items-center justify-between text-sm group">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[idx % colors.length] }}></div>
-                    <span className="text-slate-500 text-xs truncate max-w-[120px]">{item.name}</span>
-                  </div>
-                  <span className="font-semibold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded text-xs">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}</span>
-                </div>
-              ))}
+              <ul className="space-y-2 mt-2">
+                {pieData.map(c => (
+                  <li key={c.key} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 text-sand-600">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: c.color }} />
+                      {c.name}
+                    </span>
+                    <span className="text-sand-400 tabular text-xs">{((c.total / data.total) * 100).toFixed(1)}%</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </Card>
-        </div>
-      </div>
-    );
-  };
 
-  if (isLoading) {
-    return <div className="flex h-64 w-full items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
-  }
-
-  return (
-    <div className="pb-10">
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 text-gray-700 w-full md:w-auto">
-          <div className="bg-indigo-50 p-2 rounded-lg"><Filter className="w-5 h-5 text-indigo-600" /></div>
-          <div><span className="block font-medium text-sm">Filtrar Período</span><span className="text-xs text-gray-400">Selecione ano e/ou mês</span></div>
-        </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
-          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="appearance-none pl-4 pr-8 py-2 w-full bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
-            <option value="">Todos os meses</option>
-            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="appearance-none pl-4 pr-8 py-2 w-full bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
-            <option value="">Todos os anos</option>
-            {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-          </select>
-          {(selectedYear || selectedMonth) && (
-            <button onClick={() => { setSelectedYear(''); setSelectedMonth(''); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><XCircle className="w-5 h-5" /></button>
+          {!isSingleMonth && (
+            <Card className="lg:col-span-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-display text-lg font-semibold text-sand-900">Mês a mês</h3>
+                  <p className="text-xs text-sand-400">Valores por mês de vencimento</p>
+                </div>
+                <div className="flex gap-3 text-xs text-sand-500">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-brand-600" /> Pago</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-clay-300" /> Em aberto</span>
+                </div>
+              </div>
+              <div className="h-80 mt-4 -ml-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="#f4f0e8" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#8c806b' }} axisLine={false} tickLine={false} minTickGap={8} />
+                    <YAxis tickFormatter={compactBRL} tick={{ fontSize: 11, fill: '#8c806b' }} axisLine={false} tickLine={false} width={64} />
+                    <Tooltip cursor={{ fill: '#faf8f4' }} formatter={(v: number) => formatBRL(v)} contentStyle={tooltipStyle} />
+                    <Bar dataKey="paid" name="Pago" stackId="a" fill="#2f6b57" maxBarSize={28} />
+                    <Bar dataKey="pending" name="Em aberto" stackId="a" fill="#e4a178" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
           )}
         </div>
-      </div>
-
-      {renderSection("Apartamento", <Building2 className="w-6 h-6" />, aptData, aptSummary, APT_COLORS)}
-      <div className="border-t border-dashed border-gray-200 my-8"></div>
-      {renderSection("Casamento", <HeartHandshake className="w-6 h-6" />, wedData, wedSummary, WED_COLORS)}
+      )}
     </div>
   );
 };
