@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, FolderOpen, Settings, LogOut, type LucideIcon } from 'lucide-react';
+import { Menu, X, LayoutDashboard, FolderOpen, Settings, LogOut, ChevronDown, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { Button, Input, Modal } from './UI';
-import { categoryPath, getCategoryIcon } from '../lib/categories';
+import { Category, categoryPath, getCategoryIcon } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
 import logoLight from '../assets/logo-light.png';
 import markLight from '../assets/mark-light.png';
@@ -14,6 +14,70 @@ interface NavEntry {
   icon: LucideIcon;
   dot?: string;
 }
+
+const navLinkCls = (isActive: boolean, nested = false) =>
+  `group flex items-center gap-3 ${nested ? 'pl-3 pr-3 py-2' : 'px-3 py-2.5'} rounded-xl text-sm font-medium transition-colors ${
+    isActive ? 'bg-white/10 text-white' : 'text-brand-100/70 hover:bg-white/5 hover:text-white'
+  }`;
+
+const NavItem: React.FC<{ item: NavEntry; nested?: boolean }> = ({ item, nested }) => {
+  const Icon = item.icon;
+  return (
+    <NavLink to={item.path} end={item.path === '/'} className={({ isActive }) => navLinkCls(isActive, nested)}>
+      {({ isActive }) => (
+        <>
+          <Icon className={`${nested ? 'w-4 h-4' : 'w-[18px] h-[18px]'} ${isActive ? 'text-brand-200' : 'text-brand-200/50 group-hover:text-brand-200/80'}`} />
+          <span className="flex-1 truncate">{item.label}</span>
+          {item.dot && (
+            <span className={`w-1.5 h-1.5 rounded-full transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`} style={{ backgroundColor: item.dot }} />
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+};
+
+// Lembra quais grupos o usuário recolheu (só neste aparelho)
+const COLLAPSED_KEY = 'nosso-lar:grupos-recolhidos';
+const readCollapsed = (): string[] => {
+  try { return JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'); } catch { return []; }
+};
+
+const NavGroup: React.FC<{ group: Category; children: Category[]; collapsed: boolean; onToggle: () => void }> = ({ group, children, collapsed, onToggle }) => {
+  const location = useLocation();
+  const childActive = children.some(c => location.pathname === categoryPath(c.key));
+  const open = !collapsed || childActive;
+  const Icon = getCategoryIcon(group.icon);
+  return (
+    <div>
+      <div className="flex items-center">
+        <NavLink to={categoryPath(group.key)} className={({ isActive }) => `${navLinkCls(isActive)} flex-1 min-w-0`}>
+          {({ isActive }) => (
+            <>
+              <Icon className={`w-[18px] h-[18px] ${isActive || childActive ? 'text-brand-200' : 'text-brand-200/50 group-hover:text-brand-200/80'}`} />
+              <span className={`flex-1 truncate ${childActive && !isActive ? 'text-white' : ''}`}>{group.name}</span>
+            </>
+          )}
+        </NavLink>
+        <button
+          onClick={onToggle}
+          aria-label={open ? `Recolher ${group.name}` : `Expandir ${group.name}`}
+          aria-expanded={open}
+          className="p-2 ml-0.5 rounded-lg text-brand-200/50 hover:text-white hover:bg-white/5"
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform ${open ? '' : '-rotate-90'}`} />
+        </button>
+      </div>
+      {open && children.length > 0 && (
+        <div className="ml-[22px] mt-0.5 pl-2 border-l border-white/10 space-y-0.5">
+          {children.map(c => (
+            <NavItem key={c.key} nested item={{ label: c.name, path: categoryPath(c.key), icon: getCategoryIcon(c.icon), dot: c.color }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Versão compacta para a barra do celular: marca (casa + I&P) + nome
 const BrandCompact: React.FC = () => (
@@ -29,7 +93,7 @@ const BrandCompact: React.FC = () => (
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
-  const { categories } = useCategories();
+  const { tree } = useCategories();
   const { session, signOut, displayName, updateName } = useAuth();
   const [isNameOpen, setIsNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -47,20 +111,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   useEffect(() => setIsSidebarOpen(false), [location.pathname]);
 
-  const NAV_SECTIONS: { title?: string; items: NavEntry[] }[] = [
-    { items: [{ label: 'Visão geral', path: '/', icon: LayoutDashboard }] },
-    {
-      title: 'Categorias',
-      items: categories.map(c => ({ label: c.name, path: categoryPath(c.key), icon: getCategoryIcon(c.icon), dot: c.color })),
-    },
-    {
-      title: 'Geral',
-      items: [
-        { label: 'Documentos', path: '/documents', icon: FolderOpen },
-        { label: 'Configurações', path: '/configuracoes', icon: Settings },
-      ],
-    },
-  ];
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
+  const toggleGroup = (key: string) => {
+    setCollapsed(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch { /* sem armazenamento local */ }
+      return next;
+    });
+  };
+
+  const sectionTitle = (title: string) => (
+    <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-200/40">{title}</p>
+  );
 
   return (
     <div className="min-h-screen md:h-screen flex flex-col md:flex-row md:overflow-hidden">
@@ -93,43 +155,39 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
 
         <nav className="flex-1 overflow-y-auto scroll-thin px-3 pb-6 space-y-6">
-          {NAV_SECTIONS.map((section, i) => (
-            <div key={i}>
-              {section.title && (
-                <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-200/40">{section.title}</p>
+          <div className="space-y-0.5">
+            <NavItem item={{ label: 'Visão geral', path: '/', icon: LayoutDashboard }} />
+          </div>
+
+          <div>
+            {sectionTitle('Categorias')}
+            <div className="space-y-0.5">
+              {tree.map(({ category, children }) =>
+                category.is_group ? (
+                  <NavGroup
+                    key={category.key}
+                    group={category}
+                    children={children}
+                    collapsed={collapsed.includes(category.key)}
+                    onToggle={() => toggleGroup(category.key)}
+                  />
+                ) : (
+                  <NavItem
+                    key={category.key}
+                    item={{ label: category.name, path: categoryPath(category.key), icon: getCategoryIcon(category.icon), dot: category.color }}
+                  />
+                )
               )}
-              <div className="space-y-0.5">
-                {section.items.map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      end={item.path === '/'}
-                      className={({ isActive }) =>
-                        `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                          isActive ? 'bg-white/10 text-white' : 'text-brand-100/70 hover:bg-white/5 hover:text-white'
-                        }`
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon className={`w-[18px] h-[18px] ${isActive ? 'text-brand-200' : 'text-brand-200/50 group-hover:text-brand-200/80'}`} />
-                          <span className="flex-1">{item.label}</span>
-                          {item.dot && (
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}
-                              style={{ backgroundColor: item.dot }}
-                            />
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                })}
-              </div>
             </div>
-          ))}
+          </div>
+
+          <div>
+            {sectionTitle('Geral')}
+            <div className="space-y-0.5">
+              <NavItem item={{ label: 'Documentos', path: '/documents', icon: FolderOpen }} />
+              <NavItem item={{ label: 'Configurações', path: '/configuracoes', icon: Settings }} />
+            </div>
+          </div>
         </nav>
 
         <div className="p-4 flex-shrink-0">

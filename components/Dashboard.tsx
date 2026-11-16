@@ -37,7 +37,7 @@ const selectCls =
 type StatusFilter = 'ALL' | 'PENDING' | 'PAID';
 
 export const Dashboard: React.FC = () => {
-  const { categories, isLoading: categoriesLoading } = useCategories();
+  const { categories, tree, isLoading: categoriesLoading } = useCategories();
   const [rawItems, setRawItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Por padrão a visão geral abre no mês corrente.
@@ -94,11 +94,19 @@ export const Dashboard: React.FC = () => {
     const paid = sum(items.filter(i => i.status === 'PAID'));
     const pending = sum(items.filter(i => i.status === 'PENDING'));
 
-    const byCategory = categories.map(cat => {
-      const catItems = items.filter(i => i.type === cat.key);
+    // Um card por item do topo do menu: grupos somam suas subcategorias
+    const byCategory = tree.map(({ category: cat, children }) => {
+      const keys = new Set(cat.is_group ? children.map(c => c.key) : [cat.key]);
+      const catItems = items.filter(i => keys.has(i.type));
       const catTotal = sum(catItems);
       const catPaid = sum(catItems.filter(i => i.status === 'PAID'));
-      return { ...cat, total: catTotal, paid: catPaid, pending: catTotal - catPaid, count: catItems.length };
+      const subs = cat.is_group
+        ? children
+            .map(ch => ({ ...ch, total: sum(catItems.filter(i => i.type === ch.key)) }))
+            .filter(s => s.total > 0)
+            .sort((a, b) => b.total - a.total)
+        : [];
+      return { ...cat, total: catTotal, paid: catPaid, pending: catTotal - catPaid, count: catItems.length, subs };
     });
 
     const byMonth = new Map<string, { paid: number; pending: number }>();
@@ -142,7 +150,7 @@ export const Dashboard: React.FC = () => {
       items, paid, pending, total: paid + pending, byCategory, monthly, period,
       mine: paid + pending - others, toReceive, byPayer, hasShares: periodShares.length > 0,
     };
-  }, [allItems, categories, selectedYear, selectedMonth, sharesByExpense, payers]);
+  }, [allItems, tree, selectedYear, selectedMonth, sharesByExpense, payers]);
 
   const listItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -371,7 +379,7 @@ export const Dashboard: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-sand-900 truncate">{item.description}</p>
                     <p className="text-xs text-sand-400 truncate">
-                      <Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
+                      {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
                       <span className={overdue ? 'text-clay-600 font-semibold' : ''}> · vence {formatShortDate(item.date)}{overdue && ' · vencido'}</span>
                     </p>
                   </div>
@@ -501,6 +509,19 @@ export const Dashboard: React.FC = () => {
                   {cat.pending > 0 ? `${formatBRL(cat.pending)} em aberto` : cat.count ? 'Nada em aberto' : ''}
                 </span>
               </div>
+              {cat.subs.length > 0 && (
+                <ul className="mt-4 pt-3 border-t border-sand-100 space-y-1.5">
+                  {cat.subs.map(s => (
+                    <li key={s.key} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="flex items-center gap-2 text-sand-600 min-w-0">
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                        <span className="truncate">{s.name}</span>
+                      </span>
+                      <span className="text-sand-500 tabular flex-shrink-0">{formatBRL(s.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Link>
           );
         })}

@@ -7,13 +7,27 @@ import { Button, Input, Modal, Card, PageHeader, StatusBadge } from './UI';
 import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
 import { Category, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
+import { useCategories } from '../lib/CategoriesContext';
 
 interface ExpenseModuleProps {
   category: Category;
+  /** Em um grupo (ex.: Moradia): as subcategorias cujos lançamentos aparecem juntos. */
+  subcategories?: Category[];
 }
 
-export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
-  const { key: type, name: title, description } = category;
+export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcategories }) => {
+  const { name: title, description } = category;
+  const { categoryByKey } = useCategories();
+  const isGroupPage = !!category.is_group;
+  const leaves = useMemo(() => (isGroupPage ? subcategories ?? [] : [category]), [isGroupPage, subcategories, category]);
+  const leafKeys = leaves.map(l => l.key).join('|');
+  const parent = category.parent_key ? categoryByKey.get(category.parent_key) : undefined;
+  // Subcategoria filtrada na página do grupo ('ALL' = todas)
+  const [subFilter, setSubFilter] = useState('ALL');
+  // Subcategoria em que o lançamento do formulário será gravado
+  const [formType, setFormType] = useState(leaves[0]?.key ?? category.key);
+  const type = formType;
+  const defaultFormType = () => (subFilter !== 'ALL' ? subFilter : leaves[0]?.key ?? category.key);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,7 +64,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
   const loadItems = async () => {
     setIsLoading(true);
     try {
-      const [data, shares] = await Promise.all([StorageService.getByType(type), ShareService.getAll()]);
+      const keys = new Set(leaves.map(l => l.key));
+      const [data, shares] = await Promise.all([
+        isGroupPage
+          ? StorageService.getAll().then(all => all.filter(i => keys.has(i.type)))
+          : StorageService.getByType(category.key),
+        ShareService.getAll(),
+      ]);
       const ids = new Set(data.map(i => String(i.id)));
       const map = new Map<string, ExpenseShare[]>();
       shares.filter(s => ids.has(s.expenseId)).forEach(s => map.set(s.expenseId, [...(map.get(s.expenseId) ?? []), s]));
@@ -65,10 +85,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
 
   useEffect(() => {
     loadItems();
-  }, [type]);
+  }, [category.key, leafKeys]);
 
   const handleOpenModal = (item?: ExpenseItem) => {
     setSelectedFile(undefined); // Reset file input
+    setFormType(item ? item.type : defaultFormType());
     if (item) {
       setEditingId(item.id);
       setDesc(item.description);
@@ -100,9 +121,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
   };
 
   const handleOpenBatchModal = () => {
+    const target = defaultFormType();
+    setFormType(target);
     let defaultDesc = '';
-    if (type === ExpenseType.FEE) defaultDesc = 'Taxa de Condomínio';
-    else if (type === ExpenseType.INSTALLMENT) defaultDesc = 'Parcela';
+    if (target === ExpenseType.FEE) defaultDesc = 'Taxa de Condomínio';
+    else if (target === ExpenseType.INSTALLMENT) defaultDesc = 'Parcela';
     
     setBatchDesc(defaultDesc);
     setBatchAmount('');
@@ -297,20 +320,50 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
     }
   };
 
+  // No grupo, o filtro de subcategoria vale para a lista e para os totais
+  const scopedItems = useMemo(() => (subFilter === 'ALL' ? items : items.filter(i => i.type === subFilter)), [items, subFilter]);
+
   const filteredItems = useMemo(() => {
-    return items
+    return scopedItems
         .filter(i => i.description.toLowerCase().includes(searchQuery.toLowerCase()))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [items, searchQuery]);
+  }, [scopedItems, searchQuery]);
 
   const totals = useMemo(() => {
-    const paid = items.filter(i => i.status === 'PAID').reduce((a, i) => a + i.amount, 0);
-    const total = items.reduce((a, i) => a + i.amount, 0);
-    const allShares = Array.from(sharesByExpense.values()).flat();
+    const paid = scopedItems.filter(i => i.status === 'PAID').reduce((a, i) => a + i.amount, 0);
+    const total = scopedItems.reduce((a, i) => a + i.amount, 0);
+    const allShares = scopedItems.flatMap(i => sharesByExpense.get(String(i.id)) ?? []);
     const others = allShares.reduce((a, s) => a + s.amount, 0);
     const toReceive = allShares.filter(s => !s.reimbursed).reduce((a, s) => a + s.amount, 0);
     return { total, paid, pending: total - paid, mine: total - others, toReceive, hasShares: allShares.length > 0 };
-  }, [items, sharesByExpense]);
+  }, [scopedItems, sharesByExpense]);
+
+  // Selo da subcategoria em cada linha da página do grupo
+  const SubTag = ({ item }: { item: ExpenseItem }) => {
+    if (!isGroupPage) return null;
+    const sub = categoryByKey.get(item.type);
+    if (!sub) return null;
+    return (
+      <span className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium text-sand-500">
+        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: sub.color }} /> {sub.name}
+      </span>
+    );
+  };
+
+  const SubcategorySelect = ({ disabled }: { disabled?: boolean }) =>
+    isGroupPage ? (
+      <div>
+        <label className="block text-xs font-semibold text-sand-600 mb-1.5">Subcategoria</label>
+        <select
+          value={formType}
+          onChange={e => setFormType(e.target.value)}
+          disabled={disabled}
+          className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none"
+        >
+          {leaves.map(l => <option key={l.key} value={l.key}>{l.name}</option>)}
+        </select>
+      </div>
+    ) : null;
 
   // Avatares dos pagantes e a parte que fica com vocês, abaixo da descrição
   const SplitInfo = ({ item }: { item: ExpenseItem }) => {
@@ -371,20 +424,53 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
   return (
     <div>
       <PageHeader
-        eyebrow="Categoria"
+        eyebrow={isGroupPage ? 'Grupo de categorias' : parent ? parent.name : 'Categoria'}
         title={title}
         description={description}
         actions={
-          <>
-            <Button onClick={handleOpenBatchModal} variant="secondary" className="w-full sm:w-auto">
-              <Layers className="w-4 h-4" /> Gerar em lote
-            </Button>
-            <Button onClick={() => handleOpenModal()} className="w-full sm:w-auto">
-              <Plus className="w-4 h-4" /> Novo lançamento
-            </Button>
-          </>
+          leaves.length > 0 ? (
+            <>
+              <Button onClick={handleOpenBatchModal} variant="secondary" className="w-full sm:w-auto">
+                <Layers className="w-4 h-4" /> Gerar em lote
+              </Button>
+              <Button onClick={() => handleOpenModal()} className="w-full sm:w-auto">
+                <Plus className="w-4 h-4" /> Novo lançamento
+              </Button>
+            </>
+          ) : undefined
         }
       />
+
+      {isGroupPage && leaves.length === 0 && (
+        <Card className="mb-6 text-center py-10">
+          <p className="text-sand-700 font-medium">Este grupo ainda não tem subcategorias</p>
+          <p className="text-sm text-sand-400 mt-1">Em Configurações → Categorias, crie uma categoria e escolha "{title}" no campo "Dentro de".</p>
+        </Card>
+      )}
+
+      {isGroupPage && leaves.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1" role="tablist" aria-label="Filtrar por subcategoria">
+          {[{ key: 'ALL', name: 'Todas', color: undefined as string | undefined }, ...leaves].map(l => {
+            const count = l.key === 'ALL' ? items.length : items.filter(i => i.type === l.key).length;
+            const active = subFilter === l.key;
+            return (
+              <button
+                key={l.key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setSubFilter(l.key)}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition ${
+                  active ? 'bg-brand-800 border-brand-800 text-white' : 'bg-white border-sand-200 text-sand-600 hover:border-sand-300'
+                }`}
+              >
+                {l.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />}
+                {l.name}
+                <span className={active ? 'text-white/60' : 'text-sand-400'}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Resumo */}
       <div className={`grid grid-cols-1 gap-3 mb-6 ${totals.hasShares ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
@@ -446,7 +532,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
                     const overdue = item.status === 'PENDING' && item.date < today;
                     return (
                       <tr key={item.id} className="hover:bg-sand-50/60 transition-colors">
-                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<SplitInfo item={item} /></td>
+                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><SplitInfo item={item} /></div></td>
                         <td className={`px-5 py-3.5 text-sm tabular whitespace-nowrap ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-500'}`}>
                           {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">vencido</span>}
                         </td>
@@ -470,7 +556,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
                     <div className="flex justify-between items-start gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-sand-900 text-sm line-clamp-2">{item.description}</p>
-                        <SplitInfo item={item} />
+                        <div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><SplitInfo item={item} /></div>
                         <p className={`text-xs mt-1 tabular ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-400'}`}>
                           Vence em {formatDate(item.date)}{overdue && ' · vencido'}
                         </p>
@@ -500,6 +586,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
       >
         <form onSubmit={handleSave} className="space-y-4">
           
+          {SubcategorySelect({ disabled: isSaving })}
+
           {/* Status Selection */}
           <div>
             <span className="block text-xs font-semibold text-sand-600 mb-1.5">Status</span>
@@ -635,6 +723,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category }) => {
         title="Gerar Parcelas em Lote"
       >
         <form onSubmit={handleBatchSave} className="space-y-4">
+            {SubcategorySelect({ disabled: isSaving })}
             <div className="bg-brand-50 p-4 rounded-lg border border-brand-100 text-sm text-brand-800 mb-4 flex items-start gap-2">
                 <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>

@@ -12,7 +12,31 @@ export interface Category {
   icon: string;
   color: string;
   sort_order: number;
+  /** Grupo (ex.: Moradia): agrupa subcategorias e não recebe lançamentos. */
+  is_group?: boolean;
+  /** Chave do grupo ao qual a categoria pertence (null = sem grupo). */
+  parent_key?: string | null;
 }
+
+/** Item do topo do menu: um grupo com suas subcategorias, ou uma categoria sem grupo. */
+export interface CategoryNode {
+  category: Category;
+  children: Category[];
+}
+
+const byOrder = (a: Category, b: Category) => a.sort_order - b.sort_order || a.name.localeCompare(b.name);
+
+export const buildCategoryTree = (categories: Category[]): CategoryNode[] => {
+  // Só grupos podem ter filhos; se o "pai" não for um grupo, a categoria fica no topo
+  const groupKeys = new Set(categories.filter(c => c.is_group).map(c => c.key));
+  return categories
+    .filter(c => !c.parent_key || !groupKeys.has(c.parent_key))
+    .sort(byOrder)
+    .map(c => ({ category: c, children: c.is_group ? categories.filter(ch => ch.parent_key === c.key).sort(byOrder) : [] }));
+};
+
+/** Categorias que recebem lançamentos (tudo que não é grupo). */
+export const leafCategories = (categories: Category[]) => categories.filter(c => !c.is_group);
 
 // Ícones disponíveis para escolher ao criar uma categoria.
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {

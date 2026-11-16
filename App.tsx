@@ -19,13 +19,14 @@ const LEGACY_PATHS: Record<string, string> = {
 
 const CategoryPage: React.FC = () => {
   const { key = '' } = useParams();
-  const { categories, isLoading } = useCategories();
+  const { categories, tree, isLoading } = useCategories();
   if (isLoading) {
     return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>;
   }
   const category = categories.find(c => c.key === key);
   if (!category) return <Navigate to="/" replace />;
-  return <ExpenseModule key={category.key} category={category} />;
+  const subcategories = category.is_group ? tree.find(n => n.category.key === category.key)?.children ?? [] : undefined;
+  return <ExpenseModule key={category.key} category={category} subcategories={subcategories} />;
 };
 
 const Splash: React.FC = () => (
