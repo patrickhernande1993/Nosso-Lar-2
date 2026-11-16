@@ -8,6 +8,9 @@ import { Dashboard } from './components/Dashboard';
 import { SettingsModule } from './components/SettingsModule';
 import { CategoriesProvider, useCategories } from './lib/CategoriesContext';
 import { PayersProvider } from './lib/PayersContext';
+import { AuthProvider, useAuth } from './lib/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import logoLight from './assets/logo-light.png';
 
 // Endereços antigos (antes das categorias dinâmicas) continuam funcionando.
 const LEGACY_PATHS: Record<string, string> = {
@@ -25,7 +28,27 @@ const CategoryPage: React.FC = () => {
   return <ExpenseModule key={category.key} category={category} />;
 };
 
-const App: React.FC = () => {
+const Splash: React.FC = () => (
+  <div className="min-h-screen grid place-items-center bg-brand-950">
+    <img src={logoLight} alt="Nosso Lar" className="w-24 h-auto animate-pulse" />
+  </div>
+);
+
+// Só monta o app (e busca dados) depois que houver uma sessão válida.
+const AuthGate: React.FC = () => {
+  const { session, isLoading } = useAuth();
+  if (isLoading) return <Splash />;
+  if (!session) return <LoginPage />;
+  return <AppShell key={session.user.id} />;
+};
+
+const App: React.FC = () => (
+  <AuthProvider>
+    <AuthGate />
+  </AuthProvider>
+);
+
+const AppShell: React.FC = () => {
   return (
     <CategoriesProvider>
      <PayersProvider>

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, FolderOpen, Settings, type LucideIcon } from 'lucide-react';
+import { Menu, X, LayoutDashboard, FolderOpen, Settings, LogOut, type LucideIcon } from 'lucide-react';
+import { useAuth } from '../lib/AuthContext';
+import { Button, Input, Modal } from './UI';
 import { categoryPath, getCategoryIcon } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
 import logoLight from '../assets/logo-light.png';
@@ -28,6 +30,20 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
   const { categories } = useCategories();
+  const { session, signOut, displayName, updateName } = useAuth();
+  const [isNameOpen, setIsNameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  const saveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nameDraft.trim()) return;
+    setIsSavingName(true);
+    const error = await updateName(nameDraft);
+    setIsSavingName(false);
+    if (error) alert('Erro ao salvar o nome: ' + error);
+    else setIsNameOpen(false);
+  };
 
   useEffect(() => setIsSidebarOpen(false), [location.pathname]);
 
@@ -120,9 +136,45 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div className="rounded-2xl bg-white/5 ring-1 ring-white/5 px-4 py-3">
             <p className="font-display text-sm text-brand-50">Isabelly &amp; Patrick</p>
             <p className="text-[11px] text-brand-200/50 mt-0.5">Construindo nosso lar ❤️</p>
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
+              <button
+                onClick={() => { setNameDraft(displayName ?? ''); setIsNameOpen(true); }}
+                title={`${session?.user.email} · clique para ${displayName ? 'alterar' : 'definir'} seu nome`}
+                className="group flex-1 min-w-0 flex items-center gap-2 text-left rounded-lg -ml-1 px-1 py-0.5 hover:bg-white/5"
+              >
+                <span className="grid place-items-center w-6 h-6 rounded-full bg-brand-500/30 text-[10px] font-bold text-brand-50 flex-shrink-0">
+                  {(displayName ?? session?.user.email ?? '?').charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-brand-50 truncate">{displayName ?? session?.user.email}</span>
+                  {!displayName && <span className="block text-[10px] text-brand-200/50 group-hover:text-brand-200/80">Definir meu nome</span>}
+                </span>
+              </button>
+              <button
+                onClick={() => signOut()}
+                title="Sair"
+                aria-label="Sair"
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-brand-100/80 hover:text-white hover:bg-white/10 transition"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Sair
+              </button>
+            </div>
           </div>
         </div>
       </aside>
+
+      <Modal isOpen={isNameOpen} onClose={() => !isSavingName && setIsNameOpen(false)} title="Seu nome">
+        <form onSubmit={saveName} className="space-y-4">
+          <p className="text-sm text-sand-500">É assim que você aparece no app. Entrou com {session?.user.email}.</p>
+          <Input label="Nome" value={nameDraft} onChange={e => setNameDraft(e.target.value)} placeholder="Ex: Isabelly" maxLength={40} required autoFocus disabled={isSavingName} />
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setIsNameOpen(false)} disabled={isSavingName} className="w-full sm:w-auto">Cancelar</Button>
+            <Button type="submit" disabled={isSavingName || !nameDraft.trim()} className="w-full sm:w-auto">
+              {isSavingName ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {isSidebarOpen && (
         <div className="fixed inset-0 z-40 bg-sand-900/50 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)} />
