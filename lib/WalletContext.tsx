@@ -76,6 +76,28 @@ export const ACCOUNT_TYPE_LABEL: Record<string, string> = {
 /** Categoria de investimento: o nome contém "invest" (ex.: Investimentos, Investimentos (resgates)). */
 export const isInvestmentCategory = (cat?: Category) => (cat?.name ?? '').toLowerCase().includes('invest');
 
+/** Conta e método de pagamento de um lançamento (cartão, conta, reserva ou transferência para a reserva). */
+export const paymentInfo = (
+  item: ExpenseItem,
+  cat: Category | undefined,
+  accountById: Map<string, Account>,
+  cardById: Map<string, CreditCard>
+): { conta: string; metodo: string; color: string } | null => {
+  const card = item.cardId ? cardById.get(item.cardId) : undefined;
+  if (card) {
+    const acc = card.accountId ? accountById.get(card.accountId) : undefined;
+    return { conta: acc?.name ?? card.name, metodo: `Cartão ${card.name}`, color: card.color };
+  }
+  const acc = item.accountId ? accountById.get(item.accountId) : undefined;
+  if (!acc) return null;
+  if (isInvestmentCategory(cat) && !item.isReserve) {
+    const res = accountById.get(item.reserveAccountId ?? acc.id) ?? acc;
+    return { conta: isIncome(cat) ? `Reserva ${res.name} → ${acc.name}` : `${acc.name} → reserva ${res.name}`, metodo: 'Transferência', color: acc.color };
+  }
+  if (item.isReserve) return { conta: acc.name, metodo: 'Reserva', color: acc.color };
+  return { conta: acc.name, metodo: 'Pix / débito', color: acc.color };
+};
+
 /**
  * Saldos de todas as contas, com a mesma regra do sistema antigo e reserva entre contas:
  * - só contam lançamentos já pagos/recebidos;

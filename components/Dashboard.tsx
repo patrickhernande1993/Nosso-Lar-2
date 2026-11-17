@@ -6,7 +6,7 @@ import { StorageService } from '../services/storage';
 import { ExpenseItem, ExpenseShare } from '../types';
 import { ShareService } from '../services/payerStorage';
 import { usePayers, initials } from '../lib/PayersContext';
-import { useWallet, isInvestmentCategory } from '../lib/WalletContext';
+import { useWallet, paymentInfo } from '../lib/WalletContext';
 import { Card, PageHeader, StatusBadge } from './UI';
 import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
@@ -52,23 +52,7 @@ export const Dashboard: React.FC = () => {
   const { payers, payerById } = usePayers();
   const { tableMissing: walletMissing, accountById, cardById } = useWallet();
 
-  // Conta e método de pagamento de um lançamento (cartão, conta ou reserva)
-  const payInfo = (item: ExpenseItem): { conta: string; metodo: string; color: string } | null => {
-    const card = item.cardId ? cardById.get(item.cardId) : undefined;
-    if (card) {
-      const acc = card.accountId ? accountById.get(card.accountId) : undefined;
-      return { conta: acc?.name ?? card.name, metodo: `Cartão ${card.name}`, color: card.color };
-    }
-    const acc = item.accountId ? accountById.get(item.accountId) : undefined;
-    if (!acc) return null;
-    const cat = categoryByKey.get(item.type);
-    if (isInvestmentCategory(cat) && !item.isReserve) {
-      const res = accountById.get(item.reserveAccountId ?? acc.id) ?? acc;
-      return { conta: isIncome(cat) ? `Reserva ${res.name} → ${acc.name}` : `${acc.name} → reserva ${res.name}`, metodo: 'Transferência', color: acc.color };
-    }
-    if (item.isReserve) return { conta: acc.name, metodo: 'Reserva', color: acc.color };
-    return { conta: acc.name, metodo: 'Pix / débito', color: acc.color };
-  };
+  const payInfo = (item: ExpenseItem) => paymentInfo(item, categoryByKey.get(item.type), accountById, cardById);
 
   useEffect(() => {
     Promise.all([StorageService.getAll(), ShareService.getAll()])

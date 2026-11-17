@@ -9,7 +9,7 @@ import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
 import { Category, RECEIVERS, isIncome, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
 import { useCategories } from '../lib/CategoriesContext';
-import { useWallet, isInvestmentCategory } from '../lib/WalletContext';
+import { useWallet, isInvestmentCategory, paymentInfo } from '../lib/WalletContext';
 
 interface ExpenseModuleProps {
   category: Category;
@@ -731,9 +731,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
               <table className="min-w-full">
                 <thead>
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-sand-400 bg-sand-50/70">
-                    <th className="px-5 py-3">Descrição</th>
                     <th className="px-5 py-3">{income ? 'Data' : 'Vencimento'}</th>
                     <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Descrição</th>
+                    <th className="px-5 py-3 hidden lg:table-cell">Conta</th>
+                    <th className="px-5 py-3 hidden lg:table-cell">Método</th>
                     <th className="px-5 py-3 text-right">Valor</th>
                     <th className="px-5 py-3 text-center">Comprovante</th>
                     <th className="px-5 py-3 text-right"><span className="sr-only">Ações</span></th>
@@ -742,13 +744,18 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 <tbody className="divide-y divide-sand-100">
                   {filteredItems.map((item) => {
                     const overdue = item.status === 'PENDING' && item.date < today;
+                    const pay = paymentInfo(item, categoryByKey.get(item.type), accountById, cardById);
                     return (
                       <tr key={item.id} className="hover:bg-sand-50/60 transition-colors">
-                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><MethodTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div></td>
                         <td className={`px-5 py-3.5 text-sm tabular whitespace-nowrap ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-500'}`}>
-                          {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">{income ? 'atrasado' : 'vencido'}</span>}
+                          {formatDate(item.date)}{overdue && <span className="block text-[10px] uppercase tracking-wider">{income ? 'atrasado' : 'vencido'}</span>}
                         </td>
                         <td className="px-5 py-3.5"><StatusBadge status={item.status} income={income} /></td>
+                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><span className="lg:hidden"><MethodTag item={item} /></span><ReceiverTag item={item} /><SplitInfo item={item} /></div></td>
+                        <td className="px-5 py-3.5 hidden lg:table-cell text-xs text-sand-600 max-w-[11rem]" title={pay?.conta}>
+                          {pay ? <span className="flex items-center gap-1.5 min-w-0"><span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: pay.color }} /><span className="truncate">{pay.conta}</span></span> : <span className="text-sand-300">—</span>}
+                        </td>
+                        <td className="px-5 py-3.5 hidden lg:table-cell text-xs text-sand-600 whitespace-nowrap">{pay ? pay.metodo : <span className="text-sand-300">—</span>}</td>
                         <td className="px-5 py-3.5 text-sm text-right font-semibold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</td>
                         <td className="px-5 py-3.5 text-center"><ReceiptLink url={item.receiptUrl} /></td>
                         <td className="px-5 py-3.5"><RowActions item={item} /></td>
