@@ -7,6 +7,7 @@ import { DocumentModule } from './components/DocumentModule';
 import { Dashboard } from './components/Dashboard';
 import { SettingsModule } from './components/SettingsModule';
 import { WalletPage } from './components/WalletPage';
+import { PayersPage } from './components/PayersPage';
 import { CategoriesProvider, useCategories } from './lib/CategoriesContext';
 import { PayersProvider } from './lib/PayersContext';
 import { WalletProvider } from './lib/WalletContext';
@@ -64,6 +65,7 @@ const AppShell: React.FC = () => {
             <Route path="/documents" element={<DocumentModule />} />
             <Route path="/configuracoes" element={<SettingsModule />} />
             <Route path="/carteira" element={<WalletPage />} />
+            <Route path="/pagantes" element={<PayersPage />} />
             {Object.entries(LEGACY_PATHS).map(([path, key]) => (
               <Route key={path} path={`/${path}`} element={<Navigate to={`/categoria/${key}`} replace />} />
             ))}

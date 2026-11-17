@@ -86,4 +86,14 @@ export const ShareService = {
       .eq('id', shareId);
     if (error) throw error;
   },
+
+  /** Marca várias partes de uma vez (ex.: "Marcar tudo como recebido"). */
+  setReimbursedMany: async (shareIds: string[], reimbursed: boolean): Promise<void> => {
+    if (shareIds.length === 0) return;
+    const { error } = await supabase
+      .from('expense_shares')
+      .update({ reimbursed, reimbursed_at: reimbursed ? new Date().toISOString() : null })
+      .in('id', shareIds);
+    if (error) throw error;
+  },
 };
