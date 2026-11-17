@@ -6,6 +6,7 @@ import { StorageService } from '../services/storage';
 import { ExpenseItem, ExpenseShare } from '../types';
 import { ShareService } from '../services/payerStorage';
 import { usePayers, initials } from '../lib/PayersContext';
+import { useWallet } from '../lib/WalletContext';
 import { Card, PageHeader, StatusBadge } from './UI';
 import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
@@ -49,6 +50,7 @@ export const Dashboard: React.FC = () => {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [shares, setShares] = useState<ExpenseShare[]>([]);
   const { payers, payerById } = usePayers();
+  const { tableMissing: walletMissing } = useWallet();
 
   useEffect(() => {
     Promise.all([StorageService.getAll(), ShareService.getAll()])
@@ -205,7 +207,13 @@ export const Dashboard: React.FC = () => {
   };
 
   const toggleStatus = async (item: ExpenseItem) => {
-    const updated: ExpenseItem = { ...item, status: item.status === 'PAID' ? 'PENDING' : 'PAID' };
+    const newStatus = item.status === 'PAID' ? 'PENDING' : 'PAID';
+    const updated: ExpenseItem = {
+      ...item,
+      status: newStatus,
+      // Registra a data do pagamento (só se a coluna já existir)
+      ...(walletMissing ? {} : { paymentDate: newStatus === 'PAID' ? new Date().toISOString().slice(0, 10) : null }),
+    };
     setTogglingId(item.id);
     try {
       await StorageService.update(updated);

@@ -21,6 +21,35 @@ export interface ExpenseItem {
   receiptUrl?: string; // URL pública do comprovante
   status: ExpenseStatus; // em recebimentos: PAID = recebido, PENDING = a receber
   receiver?: string | null; // recebimentos: Isabelly, Patrick ou Ambos
+  accountId?: string | null; // conta de onde saiu / para onde entrou
+  cardId?: string | null; // cartão de crédito usado
+  paymentDate?: string | null; // YYYY-MM-DD em que foi pago/recebido
+  isReserve?: boolean; // pago com a reserva (investimentos) ou depositado nela
+}
+
+// --- Contas e cartões ---
+
+export type AccountType = 'checking' | 'savings' | 'investment' | 'cash' | 'other';
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  owner: string | null;
+  initialBalance: number;
+  initialInvested: number;
+  color: string;
+}
+
+export interface CreditCard {
+  id: string;
+  name: string;
+  owner: string | null;
+  color: string;
+  creditLimit: number;
+  closingDay: number;
+  dueDay: number;
+  accountId: string | null;
 }
 
 // --- Pagantes e divisão de despesas ---

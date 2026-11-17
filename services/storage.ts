@@ -39,6 +39,34 @@ const uploadReceipt = async (file: File): Promise<string | null> => {
   }
 };
 
+
+// Converte uma linha do banco para o formato do app
+const fromDb = (item: any): ExpenseItem => ({
+  id: item.id,
+  type: item.type as string,
+  description: item.description,
+  amount: Number(item.amount),
+  date: typeof item.date === 'string' ? item.date.slice(0, 10) : item.date,
+  monthYear: item.month_year,
+  createdAt: item.created_at,
+  receiptUrl: item.receipt_url,
+  status: item.status || 'PENDING', // Fallback para registros antigos
+  ...(item.receiver != null ? { receiver: item.receiver } : {}),
+  ...(item.account_id != null ? { accountId: item.account_id } : {}),
+  ...(item.card_id != null ? { cardId: item.card_id } : {}),
+  ...(item.payment_date != null ? { paymentDate: String(item.payment_date).slice(0, 10) } : {}),
+  ...(item.is_reserve_withdrawal ? { isReserve: true } : {}),
+});
+
+// Campos opcionais: só são enviados quando definidos (as colunas podem não existir antes dos scripts)
+const optionalFields = (item: ExpenseItem) => ({
+  ...(item.receiver !== undefined ? { receiver: item.receiver } : {}),
+  ...(item.accountId !== undefined ? { account_id: item.accountId } : {}),
+  ...(item.cardId !== undefined ? { card_id: item.cardId } : {}),
+  ...(item.paymentDate !== undefined ? { payment_date: item.paymentDate } : {}),
+  ...(item.isReserve !== undefined ? { is_reserve_withdrawal: item.isReserve } : {}),
+});
+
 export const StorageService = {
   getAll: async (): Promise<ExpenseItem[]> => {
     const { data, error } = await supabase
@@ -50,18 +78,7 @@ export const StorageService = {
       return [];
     }
 
-    return data.map((item: any) => ({
-      id: item.id,
-      type: item.type as string,
-      description: item.description,
-      amount: item.amount,
-      date: item.date,
-      monthYear: item.month_year,
-      createdAt: item.created_at,
-      receiptUrl: item.receipt_url,
-      status: item.status || 'PENDING', // Fallback para registros antigos
-      ...(item.receiver != null ? { receiver: item.receiver } : {})
-    }));
+    return data.map(fromDb);
   },
 
   getByType: async (type: string): Promise<ExpenseItem[]> => {
@@ -75,18 +92,7 @@ export const StorageService = {
       return [];
     }
 
-    return data.map((item: any) => ({
-      id: item.id,
-      type: item.type as string,
-      description: item.description,
-      amount: item.amount,
-      date: item.date,
-      monthYear: item.month_year,
-      createdAt: item.created_at,
-      receiptUrl: item.receipt_url,
-      status: item.status || 'PENDING',
-      ...(item.receiver != null ? { receiver: item.receiver } : {})
-    }));
+    return data.map(fromDb);
   },
 
   add: async (item: ExpenseItem, file?: File): Promise<void> => {
@@ -113,8 +119,7 @@ export const StorageService = {
       created_at: item.createdAt,
       receipt_url: receiptUrl,
       status: item.status,
-      // Só envia quem recebeu em recebimentos (a coluna pode não existir antes do script)
-      ...(item.receiver !== undefined ? { receiver: item.receiver } : {})
+      ...optionalFields(item)
     };
 
     const { error } = await supabase
@@ -139,7 +144,7 @@ export const StorageService = {
       created_at: item.createdAt,
       receipt_url: item.receiptUrl,
       status: item.status,
-      ...(item.receiver !== undefined ? { receiver: item.receiver } : {})
+      ...optionalFields(item)
     }));
 
     const { error } = await supabase
@@ -173,7 +178,7 @@ export const StorageService = {
       month_year: updatedItem.monthYear,
       receipt_url: receiptUrl,
       status: updatedItem.status,
-      ...(updatedItem.receiver !== undefined ? { receiver: updatedItem.receiver } : {})
+      ...optionalFields(updatedItem)
     };
 
     const { error } = await supabase

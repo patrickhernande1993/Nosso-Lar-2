@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange, UserRound } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange, UserRound, Landmark, CreditCard as CardIcon } from 'lucide-react';
 import { ExpenseType, ExpenseItem, ExpenseStatus, ExpenseShare } from '../types';
 import { StorageService } from '../services/storage';
 import { ShareService } from '../services/payerStorage';
@@ -8,6 +8,7 @@ import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
 import { Category, RECEIVERS, isIncome, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
 import { useCategories } from '../lib/CategoriesContext';
+import { useWallet } from '../lib/WalletContext';
 
 interface ExpenseModuleProps {
   category: Category;
@@ -30,6 +31,21 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   const income = isIncome(category);
   const [receiver, setReceiver] = useState('');
   const [batchReceiver, setBatchReceiver] = useState('');
+  // Conta/cartão: '' | 'acc:<id>' | 'card:<id>'
+  const { accounts, cards, accountById, cardById, tableMissing: walletMissing } = useWallet();
+  const [payMethod, setPayMethod] = useState('');
+  const [batchPayMethod, setBatchPayMethod] = useState('');
+  const [isReserve, setIsReserve] = useState(false);
+  const [paymentDate, setPaymentDate] = useState('');
+  const methodOf = (i: ExpenseItem) => (i.cardId ? `card:${i.cardId}` : i.accountId ? `acc:${i.accountId}` : '');
+  const walletFields = (method: string, reserve: boolean) =>
+    walletMissing
+      ? {}
+      : {
+          accountId: method.startsWith('acc:') ? method.slice(4) : null,
+          cardId: method.startsWith('card:') ? method.slice(5) : null,
+          isReserve: method.startsWith('acc:') ? reserve : false,
+        };
   const defaultFormType = () => (subFilter !== 'ALL' ? subFilter : leaves[0]?.key ?? category.key);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -101,6 +117,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setMonthYear(item.monthYear || '');
       setStatus(item.status);
       setReceiver(item.receiver ?? '');
+      setPayMethod(methodOf(item));
+      setIsReserve(!!item.isReserve);
+      setPaymentDate(item.paymentDate ?? '');
       setExistingReceiptUrl(item.receiptUrl);
       const existing = sharesByExpense.get(String(item.id)) ?? [];
       setSplitEnabled(existing.length > 0);
@@ -109,6 +128,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setSplitEnabled(false);
       setShareRows([]);
       setReceiver('');
+      setPayMethod('');
+      setIsReserve(false);
+      setPaymentDate('');
       setEditingId(null);
       setDesc('');
       setAmount('');
@@ -145,6 +167,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     setBatchSplitEnabled(false);
     setBatchShareRows([]);
     setBatchReceiver('');
+    setBatchPayMethod('');
     setIsBatchModalOpen(true);
   };
 
@@ -188,7 +211,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         createdAt: Date.now(),
         receiptUrl: existingReceiptUrl,
         status: status,
-        ...(income ? { receiver: receiver || null } : {})
+        ...(income ? { receiver: receiver || null } : {}),
+        ...walletFields(payMethod, isReserve),
+        ...(walletMissing ? {} : { paymentDate: status === 'PAID' ? paymentDate || new Date().toISOString().slice(0, 10) : null }),
       };
 
       // Valida a divisão antes de gravar qualquer coisa
@@ -285,7 +310,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 monthYear: monthYearStr,
                 createdAt: Date.now(),
                 status: 'PENDING',
-                ...(income ? { receiver: batchReceiver || null } : {})
+                ...(income ? { receiver: batchReceiver || null } : {}),
+                ...walletFields(batchPayMethod, false)
             });
         }
 
@@ -430,6 +456,45 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       </div>
     ) : null;
 
+  const PayMethodSelect = ({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) =>
+    walletMissing || (accounts.length === 0 && cards.length === 0) ? null : (
+      <div>
+        <label className="block text-xs font-semibold text-sand-600 mb-1.5">{income ? 'Recebido em' : 'Pago com'}</label>
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          disabled={disabled}
+          className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none"
+        >
+          <option value="">Não informado</option>
+          {accounts.length > 0 && (
+            <optgroup label="Contas">
+              {accounts.map(a => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.owner ? ` (${a.owner})` : ''}</option>)}
+            </optgroup>
+          )}
+          {!income && cards.length > 0 && (
+            <optgroup label="Cartões de crédito">
+              {cards.map(c => <option key={c.id} value={`card:${c.id}`}>{c.name}{c.owner ? ` (${c.owner})` : ''}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </div>
+    );
+
+  // Conta/cartão usado, abaixo da descrição
+  const MethodTag = ({ item }: { item: ExpenseItem }) => {
+    const card = item.cardId ? cardById.get(item.cardId) : undefined;
+    const acc = !card && item.accountId ? accountById.get(item.accountId) : undefined;
+    if (!card && !acc) return null;
+    const Icon = card ? CardIcon : Landmark;
+    return (
+      <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-sand-500">
+        <Icon className="w-3 h-3" style={{ color: (card ?? acc)!.color }} /> {(card ?? acc)!.name}
+        {item.isReserve && <span className="text-sand-400">· reserva</span>}
+      </span>
+    );
+  };
+
   const today = new Date().toISOString().slice(0, 10);
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
@@ -570,7 +635,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                     const overdue = item.status === 'PENDING' && item.date < today;
                     return (
                       <tr key={item.id} className="hover:bg-sand-50/60 transition-colors">
-                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div></td>
+                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><MethodTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div></td>
                         <td className={`px-5 py-3.5 text-sm tabular whitespace-nowrap ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-500'}`}>
                           {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">{income ? 'atrasado' : 'vencido'}</span>}
                         </td>
@@ -594,7 +659,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                     <div className="flex justify-between items-start gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-sand-900 text-sm line-clamp-2">{item.description}</p>
-                        <div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div>
+                        <div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><MethodTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div>
                         <p className={`text-xs mt-1 tabular ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-400'}`}>
                           {income ? 'Previsto para' : 'Vence em'} {formatDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}
                         </p>
@@ -626,6 +691,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
           
           {SubcategorySelect({ disabled: isSaving })}
           {ReceiverSelect({ value: receiver, onChange: setReceiver, disabled: isSaving })}
+          {PayMethodSelect({ value: payMethod, onChange: setPayMethod, disabled: isSaving })}
+          {!walletMissing && payMethod.startsWith('acc:') && (
+            <label className="flex items-center gap-2 text-sm text-sand-700 -mt-1 cursor-pointer select-none">
+              <input type="checkbox" checked={isReserve} onChange={e => setIsReserve(e.target.checked)} disabled={isSaving} className="w-4 h-4 accent-brand-700" />
+              {income ? 'Guardar na reserva (investimentos)' : 'Pago com a reserva (investimentos)'}
+            </label>
+          )}
 
           {/* Status Selection */}
           <div>
@@ -764,6 +836,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         <form onSubmit={handleBatchSave} className="space-y-4">
             {SubcategorySelect({ disabled: isSaving })}
             {ReceiverSelect({ value: batchReceiver, onChange: setBatchReceiver, disabled: isSaving })}
+            {PayMethodSelect({ value: batchPayMethod, onChange: setBatchPayMethod, disabled: isSaving })}
             <div className="bg-brand-50 p-4 rounded-lg border border-brand-100 text-sm text-brand-800 mb-4 flex items-start gap-2">
                 <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>

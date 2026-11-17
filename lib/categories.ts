@@ -1,7 +1,7 @@
 import {
   CreditCard, FileText, Wallet, Landmark, Sofa, Zap, Home, Car, ShoppingCart, Wifi, Droplets, Flame,
   Wrench, Shield, PawPrint, GraduationCap, HeartPulse, Plane, Gift, Hammer, Tv, Utensils, Receipt, PiggyBank,
-  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2,
+  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2, Sparkles, PartyPopper, Heart, Users, Repeat, MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,7 +53,7 @@ export const leafCategories = (categories: Category[]) => categories.filter(c =>
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Wallet, CreditCard, FileText, Landmark, Sofa, Zap, Home, Car, ShoppingCart, Wifi, Droplets, Flame,
   Wrench, Shield, PawPrint, GraduationCap, HeartPulse, Plane, Gift, Hammer, Tv, Utensils, Receipt, PiggyBank,
-  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2,
+  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2, Sparkles, PartyPopper, Heart, Users, Repeat, MoreHorizontal,
 };
 
 export const CATEGORY_COLORS = [

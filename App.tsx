@@ -6,8 +6,10 @@ import { ExpenseModule } from './components/ExpenseModule';
 import { DocumentModule } from './components/DocumentModule';
 import { Dashboard } from './components/Dashboard';
 import { SettingsModule } from './components/SettingsModule';
+import { WalletPage } from './components/WalletPage';
 import { CategoriesProvider, useCategories } from './lib/CategoriesContext';
 import { PayersProvider } from './lib/PayersContext';
+import { WalletProvider } from './lib/WalletContext';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import logoLight from './assets/logo-light.png';
@@ -53,6 +55,7 @@ const AppShell: React.FC = () => {
   return (
     <CategoriesProvider>
      <PayersProvider>
+     <WalletProvider>
       <Router>
         <Layout>
           <Routes>
@@ -60,6 +63,7 @@ const AppShell: React.FC = () => {
             <Route path="/categoria/:key" element={<CategoryPage />} />
             <Route path="/documents" element={<DocumentModule />} />
             <Route path="/configuracoes" element={<SettingsModule />} />
+            <Route path="/carteira" element={<WalletPage />} />
             {Object.entries(LEGACY_PATHS).map(([path, key]) => (
               <Route key={path} path={`/${path}`} element={<Navigate to={`/categoria/${key}`} replace />} />
             ))}
@@ -67,6 +71,7 @@ const AppShell: React.FC = () => {
           </Routes>
         </Layout>
       </Router>
+     </WalletProvider>
      </PayersProvider>
     </CategoriesProvider>
   );

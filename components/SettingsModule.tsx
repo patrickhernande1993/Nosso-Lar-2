@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, Trash2, ChevronUp, ChevronDown, Loader2, Database, Copy, Check, RefreshCw, Tags, Users, FolderPlus } from 'lucide-react';
+import { Plus, Edit2, Trash2, ChevronUp, ChevronDown, Loader2, Database, Copy, Check, RefreshCw, Tags, Users, FolderPlus, Wallet } from 'lucide-react';
 import { Button, Card, Input, Modal, PageHeader } from './UI';
 import { useCategories } from '../lib/CategoriesContext';
 import { usePayers, initials } from '../lib/PayersContext';
@@ -7,6 +7,7 @@ import { CategoryService } from '../services/categoryStorage';
 import { PayerService } from '../services/payerStorage';
 import { Category, CategoryKind, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryIcon, isIncome, makeCategoryKey } from '../lib/categories';
 import { Payer } from '../types';
+import { WalletSettings } from './WalletSettings';
 import categoriesSql from '../supabase_categories.sql?raw';
 import payersSql from '../supabase_pagantes.sql?raw';
 import subcategoriesSql from '../supabase_subcategorias.sql?raw';
@@ -57,15 +58,15 @@ const TabToolbar: React.FC<{ text: string; action: React.ReactNode }> = ({ text,
   </div>
 );
 
-type Tab = 'categorias' | 'pagantes';
+type Tab = 'categorias' | 'pagantes' | 'carteira';
 
 export const SettingsModule: React.FC = () => {
   const [tab, setTab] = useState<Tab>('categorias');
   return (
     <div>
       <PageHeader eyebrow="Geral" title="Configurações" />
-      <div className="inline-grid grid-cols-2 gap-1 p-1 bg-sand-200/60 rounded-xl mb-6" role="tablist">
-        {([['categorias', 'Categorias', Tags], ['pagantes', 'Pagantes', Users]] as const).map(([value, label, Icon]) => (
+      <div className="grid grid-cols-3 sm:inline-grid gap-1 p-1 bg-sand-200/60 rounded-xl mb-6" role="tablist">
+        {([['categorias', 'Categorias', Tags], ['pagantes', 'Pagantes', Users], ['carteira', 'Contas e cartões', Wallet]] as const).map(([value, label, Icon]) => (
           <button
             key={value}
             role="tab"
@@ -79,7 +80,7 @@ export const SettingsModule: React.FC = () => {
           </button>
         ))}
       </div>
-      {tab === 'categorias' ? <CategoriesSettings /> : <PayersSettings />}
+      {tab === 'categorias' ? <CategoriesSettings /> : tab === 'pagantes' ? <PayersSettings /> : <WalletSettings />}
     </div>
   );
 };

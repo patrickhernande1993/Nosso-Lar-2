@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, FolderOpen, Settings, LogOut, ChevronDown, type LucideIcon } from 'lucide-react';
+import { Menu, X, LayoutDashboard, FolderOpen, Settings, LogOut, ChevronDown, Wallet, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { Button, Input, Modal } from './UI';
 import { Category, categoryPath, getCategoryIcon } from '../lib/categories';
@@ -191,6 +191,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div>
             {sectionTitle('Geral')}
             <div className="space-y-0.5">
+              <NavItem item={{ label: 'Contas e cartões', path: '/carteira', icon: Wallet }} />
               <NavItem item={{ label: 'Documentos', path: '/documents', icon: FolderOpen }} />
               <NavItem item={{ label: 'Configurações', path: '/configuracoes', icon: Settings }} />
             </div>
