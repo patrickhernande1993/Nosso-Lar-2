@@ -867,16 +867,6 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
           
           {SubcategorySelect({ disabled: isSaving })}
           {ReceiverSelect({ value: receiver, onChange: setReceiver, disabled: isSaving })}
-          {investForm
-            ? ReserveTransfer({ method: payMethod, onMethod: setPayMethod, reserve: reserveAcc, onReserve: setReserveAcc, disabled: isSaving })
-            : PayMethodSelect({ value: payMethod, onChange: setPayMethod, disabled: isSaving })}
-          {!walletMissing && !investForm && payMethod.startsWith('acc:') && (
-            <label className="flex items-center gap-2 text-sm text-sand-700 -mt-1 cursor-pointer select-none">
-              <input type="checkbox" checked={isReserve} onChange={e => setIsReserve(e.target.checked)} disabled={isSaving} className="w-4 h-4 accent-brand-700" />
-              {income ? 'Guardar na reserva (investimentos)' : 'Pago com a reserva (investimentos)'}
-            </label>
-          )}
-
           {/* Status Selection */}
           <div>
             <span className="block text-xs font-semibold text-sand-600 mb-1.5">Status</span>
@@ -897,6 +887,22 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
               ))}
             </div>
           </div>
+
+          {/* Forma de pagamento só aparece quando marcado como pago/recebido */}
+          {status === 'PAID' && (
+            <>
+          {investForm
+            ? ReserveTransfer({ method: payMethod, onMethod: setPayMethod, reserve: reserveAcc, onReserve: setReserveAcc, disabled: isSaving })
+            : PayMethodSelect({ value: payMethod, onChange: setPayMethod, disabled: isSaving })}
+          {!walletMissing && !investForm && payMethod.startsWith('acc:') && (
+            <label className="flex items-center gap-2 text-sm text-sand-700 -mt-1 cursor-pointer select-none">
+              <input type="checkbox" checked={isReserve} onChange={e => setIsReserve(e.target.checked)} disabled={isSaving} className="w-4 h-4 accent-brand-700" />
+              {income ? 'Guardar na reserva (investimentos)' : 'Pago com a reserva (investimentos)'}
+            </label>
+          )}
+
+            </>
+          )}
 
           <Input
             label="Mês/Ano Referência (MM/AAAA)"
