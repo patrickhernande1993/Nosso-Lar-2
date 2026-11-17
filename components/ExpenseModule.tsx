@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange, UserRound, Landmark, CreditCard as CardIcon } from 'lucide-react';
 import { ExpenseType, ExpenseItem, ExpenseStatus, ExpenseShare } from '../types';
 import { StorageService } from '../services/storage';
@@ -63,6 +64,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false); // Modal de Lote
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'PAID'>('ALL');
+  // Parcelamento automático no "Novo lançamento": nº de meses e modo (ratear o valor ou repetir o valor cheio)
+  const [installments, setInstallments] = useState('1');
+  const [installMode, setInstallMode] = useState<'SPLIT' | 'REPEAT'>('SPLIT');
   
   // Single Item Form State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -116,6 +120,15 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     loadItems();
   }, [category.key, leafKeys]);
 
+  // Vindo do "Novo lançamento" da visão geral (?novo=1): abre o formulário direto
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('novo') && leaves.length > 0) {
+      setSearchParams({}, { replace: true });
+      handleOpenModal();
+    }
+  }, [searchParams]);
+
   const handleOpenModal = (item?: ExpenseItem) => {
     setSelectedFile(undefined); // Reset file input
     setFormType(item ? item.type : defaultFormType());
@@ -144,6 +157,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setReserveAcc('');
       setPaymentDate('');
       setEditingId(null);
+      setInstallments('1');
+      setInstallMode('SPLIT');
       setDesc('');
       setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
@@ -182,6 +197,35 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     setBatchPayMethod('');
     setBatchReserveAcc('');
     setIsBatchModalOpen(true);
+  };
+
+  /** Gera as parcelas mensais a partir do lançamento base. Ratear: divide o valor (centavos na última); Repetir: valor cheio todo mês. */
+  const buildInstallments = (base: ExpenseItem, rawDesc: string, n: number, mode: 'SPLIT' | 'REPEAT', withMonthPrefix: boolean): ExpenseItem[] => {
+    const [y0, m0, d0] = base.date.split('-').map(Number);
+    const totalCents = Math.round(base.amount * 100);
+    const partCents = mode === 'SPLIT' ? Math.floor(totalCents / n) : totalCents;
+    return Array.from({ length: n }, (_, i) => {
+      const mIndex = m0 - 1 + i;
+      const y = y0 + Math.floor(mIndex / 12);
+      const m = (mIndex % 12) + 1;
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const d = Math.min(d0, lastDay);
+      const mm = String(m).padStart(2, '0');
+      const monthYearStr = `${mm}/${y}`;
+      const cents = mode === 'SPLIT' && i === n - 1 ? totalCents - partCents * (n - 1) : partCents;
+      const label = `${rawDesc} (${i + 1}/${n})`;
+      return {
+        ...base,
+        id: i === 0 ? base.id : crypto.randomUUID(),
+        description: withMonthPrefix ? `${monthYearStr} - ${label}` : label,
+        monthYear: withMonthPrefix ? monthYearStr : base.monthYear,
+        amount: cents / 100,
+        date: `${y}-${mm}-${String(d).padStart(2, '0')}`,
+        receiptUrl: undefined,
+        // Só a 1ª parcela herda o status escolhido; as seguintes ficam em aberto
+        ...(i === 0 ? {} : { status: 'PENDING' as const, ...(base.paymentDate !== undefined ? { paymentDate: null } : {}) }),
+      };
+    });
   };
 
   // Salvar Item Único
@@ -240,15 +284,31 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         }
       }
 
-      if (editingId) {
-        await StorageService.update(itemPayload, selectedFile);
+      const n = editingId ? 1 : Math.max(1, Math.min(120, parseInt(installments) || 1));
+      if (n > 1) {
+        const plan = buildInstallments(itemPayload, desc, n, installMode, !!finalMonthYear);
+        // 1ª parcela com o comprovante (se houver); as demais em lote
+        await StorageService.add(plan[0], selectedFile);
+        if (plan.length > 1) await StorageService.addBatch(plan.slice(1));
+        if (!sharesUnavailable && 'shares' in shares && shares.shares.length > 0) {
+          // Cada pagante paga a mesma proporção em cada parcela
+          for (const it of plan) {
+            const ratio = it.amount / itemPayload.amount;
+            const scaled = shares.shares.map(sh => ({ ...sh, amount: Math.round(sh.amount * ratio * 100) / 100, reimbursed: false }));
+            await ShareService.replaceForExpense(String(it.id), scaled);
+          }
+        }
       } else {
-        await StorageService.add(itemPayload, selectedFile);
-      }
+        if (editingId) {
+          await StorageService.update(itemPayload, selectedFile);
+        } else {
+          await StorageService.add(itemPayload, selectedFile);
+        }
 
-      const hadShares = (sharesByExpense.get(String(itemPayload.id)) ?? []).length > 0;
-      if (!sharesUnavailable && 'shares' in shares && (shares.shares.length > 0 || hadShares)) {
-        await ShareService.replaceForExpense(String(itemPayload.id), shares.shares);
+        const hadShares = (sharesByExpense.get(String(itemPayload.id)) ?? []).length > 0;
+        if (!sharesUnavailable && 'shares' in shares && (shares.shares.length > 0 || hadShares)) {
+          await ShareService.replaceForExpense(String(itemPayload.id), shares.shares);
+        }
       }
 
       await loadItems();
@@ -878,6 +938,39 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 disabled={isSaving}
             />
           </div>
+
+          {!editingId && (() => {
+            const n = Math.max(1, Math.min(120, parseInt(installments) || 1));
+            const value = parseFloat(amount) || 0;
+            const per = installMode === 'SPLIT' ? value / n : value;
+            return (
+              <div className="rounded-xl border border-sand-200 bg-sand-50/60 p-3.5 space-y-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="w-24">
+                    <label className="block text-xs font-semibold text-sand-600 mb-1.5">Nº de meses</label>
+                    <input
+                      type="number" min={1} max={120} value={installments}
+                      onChange={e => setInstallments(e.target.value)} disabled={isSaving}
+                      className="w-full px-3 py-2.5 rounded-xl border border-sand-200 bg-white text-sm text-sand-900 focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-sand-100 rounded-xl" role="radiogroup" aria-label="Como gerar as parcelas">
+                    {([['SPLIT', 'Ratear'], ['REPEAT', 'Repetir']] as const).map(([v, l]) => (
+                      <button key={v} type="button" role="radio" aria-checked={installMode === v} onClick={() => setInstallMode(v)} disabled={isSaving || n === 1}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 ${installMode === v ? 'bg-white shadow-sm text-sand-900' : 'text-sand-500 hover:text-sand-800'}`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-sand-500">
+                  {n === 1
+                    ? 'Lançamento único. Para parcelar, informe mais de 1 mês.'
+                    : <>Plano: <strong className="text-sand-800">{n}x de {formatCurrency(per)}</strong>{installMode === 'SPLIT' ? ` (total ${formatCurrency(value)})` : ` (total ${formatCurrency(value * n)})`} · uma por mês a partir da data acima, com "(1/{n})" na descrição.</>}
+                </p>
+              </div>
+            );
+          })()}
 
           {!income && <SplitEditor
             enabled={splitEnabled}

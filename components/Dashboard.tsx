@@ -10,6 +10,7 @@ import { useWallet, paymentInfo } from '../lib/WalletContext';
 import { Card, PageHeader, StatusBadge } from './UI';
 import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
+import { NewEntryLauncher } from './NewEntryLauncher';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const MONTHS_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -255,6 +256,7 @@ export const Dashboard: React.FC = () => {
         title={data.period}
         description="Entradas, saídas e o saldo do período, somando todas as categorias."
         actions={
+          <>
           <div className="flex items-center gap-2 w-full">
             {isSingleMonth && (
               <button onClick={() => shiftMonth(-1)} aria-label="Mês anterior" className="p-2.5 rounded-xl border border-sand-200 bg-white text-sand-600 hover:bg-sand-50 transition">
@@ -287,6 +289,8 @@ export const Dashboard: React.FC = () => {
               </button>
             )}
           </div>
+          <NewEntryLauncher />
+          </>
         }
       />
 
