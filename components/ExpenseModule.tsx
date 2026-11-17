@@ -62,6 +62,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false); // Modal de Lote
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'PAID'>('ALL');
   
   // Single Item Form State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -374,9 +375,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
 
   const filteredItems = useMemo(() => {
     return scopedItems
+        .filter(i => statusFilter === 'ALL' || i.status === statusFilter)
         .filter(i => i.description.toLowerCase().includes(searchQuery.toLowerCase()))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [scopedItems, searchQuery]);
+  }, [scopedItems, searchQuery, statusFilter]);
+
+  const statusCounts = useMemo(() => ({
+    ALL: scopedItems.length,
+    PENDING: scopedItems.filter(i => i.status === 'PENDING').length,
+    PAID: scopedItems.filter(i => i.status === 'PAID').length,
+  }), [scopedItems]);
 
   const totals = useMemo(() => {
     const paid = scopedItems.filter(i => i.status === 'PAID').reduce((a, i) => a + i.amount, 0);
@@ -676,16 +684,33 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="px-5 py-3.5 border-b border-sand-100 flex items-center gap-3">
-          <Search className="w-4 h-4 text-sand-400" />
-          <input
-            type="text"
-            placeholder="Buscar por descrição..."
-            className="bg-transparent text-sm w-full outline-none placeholder-sand-400"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <span className="text-xs text-sand-400 whitespace-nowrap">{filteredItems.length} itens</span>
+        <div className="px-4 sm:px-5 py-3 border-b border-sand-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Search className="w-4 h-4 text-sand-400 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Buscar por descrição..."
+              className="bg-transparent text-sm w-full outline-none placeholder-sand-400"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <span className="text-xs text-sand-400 whitespace-nowrap">{filteredItems.length} {filteredItems.length === 1 ? 'item' : 'itens'}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl flex-shrink-0" role="tablist" aria-label="Filtrar por status">
+            {([['ALL', 'Todos'], ['PENDING', income ? 'A receber' : 'Em aberto'], ['PAID', income ? 'Recebidos' : 'Pagos']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={statusFilter === value}
+                onClick={() => setStatusFilter(value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                  statusFilter === value ? 'bg-white shadow-sm text-sand-900' : 'text-sand-500 hover:text-sand-800'
+                }`}
+              >
+                {label} <span className="text-sand-400 font-medium">{statusCounts[value]}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {isLoading ? (
@@ -694,9 +719,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-sand-600 font-medium">{items.length > 0 ? 'Nenhum lançamento neste período' : 'Nenhum lançamento encontrado'}</p>
+            <p className="text-sand-600 font-medium">{scopedItems.length > 0 ? 'Nenhum lançamento com esse filtro' : items.length > 0 ? 'Nenhum lançamento neste período' : 'Nenhum lançamento encontrado'}</p>
             <p className="text-sm text-sand-400 mt-1">
-              {items.length > 0 ? 'Troque o mês ou escolha "Todos os meses" para ver o histórico.' : <>Use "{income ? 'Novo recebimento' : 'Novo lançamento'}" para adicionar o primeiro.</>}
+              {scopedItems.length > 0 ? 'Troque o status ou limpe a busca.' : items.length > 0 ? 'Troque o mês ou escolha "Todos os meses" para ver o histórico.' : <>Use "{income ? 'Novo recebimento' : 'Novo lançamento'}" para adicionar o primeiro.</>}
             </p>
           </div>
         ) : (
