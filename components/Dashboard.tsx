@@ -142,7 +142,7 @@ export const Dashboard: React.FC = () => {
       const key = i.date.slice(0, 7);
       const row = byMonth.get(key) ?? { entradas: 0, saidas: 0 };
       if (isInc(i)) row.entradas += i.amount;
-      else row.saidas += mineOf(i);
+      else row.saidas += i.amount;
       byMonth.set(key, row);
     });
     const monthly = Array.from(byMonth.entries())
@@ -178,7 +178,8 @@ export const Dashboard: React.FC = () => {
       items, paid, pending, total: paid + pending, byCategory, byIncomeCategory, monthly, period,
       mine: paid + pending - others, toReceive, byPayer, hasShares: periodShares.length > 0,
       inTotal, inReceived, outTotal, outPaid, byReceiver, hasIncome: incItems.length > 0,
-      saldoAtual: inReceived - outPaid, saldoPrevisto: inTotal - outTotal,
+      // Igual ao sistema antigo: entradas − todas as saídas do período (valor cheio, pagas ou não)
+      saldoMes: inTotal - (paid + pending), saldoRealizado: inReceived - paid,
     };
   }, [allItems, expenseTree, incomeTree, categoryByKey, selectedYear, selectedMonth, sharesByExpense, payers]);
 
@@ -293,17 +294,17 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <div className="lg:col-span-2 relative overflow-hidden rounded-3xl bg-brand-900 text-white p-6 md:p-8">
           <div className="absolute -right-16 -top-24 w-72 h-72 rounded-full bg-brand-500/20 blur-3xl pointer-events-none" />
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-200/70">Saldo atual · {data.period}</p>
-          <p className={`font-display text-4xl md:text-5xl font-semibold mt-2 tabular ${data.saldoAtual < 0 ? 'text-clay-200' : ''}`}>{formatBRL(data.saldoAtual)}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-200/70">Saldo · {data.period}</p>
+          <p className={`font-display text-4xl md:text-5xl font-semibold mt-2 tabular ${data.saldoMes < 0 ? 'text-clay-200' : ''}`}>{formatBRL(data.saldoMes)}</p>
           <p className="text-sm text-brand-100/70 mt-2">
-            Recebido menos o que já foi pago. Previsto até o fim do período:{' '}
-            <span className={`font-semibold tabular ${data.saldoPrevisto < 0 ? 'text-clay-200' : 'text-white'}`}>{formatBRL(data.saldoPrevisto)}</span>
+            Entradas menos todas as saídas do período. Realizado até agora (recebido − pago):{' '}
+            <span className={`font-semibold tabular ${data.saldoRealizado < 0 ? 'text-clay-200' : 'text-white'}`}>{formatBRL(data.saldoRealizado)}</span>
           </p>
 
           <div className="grid grid-cols-2 gap-3 md:gap-4 mt-6">
             {[
               { label: 'Entradas', value: data.inTotal, sub: `${formatBRL(data.inReceived)} recebido`, dot: 'bg-brand-300' },
-              { label: 'Saídas', value: data.outTotal, sub: `${formatBRL(data.outPaid)} pago${data.hasShares ? ' · sua parte' : ''}`, dot: 'bg-clay-300' },
+              { label: 'Saídas', value: data.total, sub: data.hasShares ? `sua parte ${formatBRL(data.outTotal)}` : `${formatBRL(data.paid)} pago`, dot: 'bg-clay-300' },
               { label: 'Falta pagar', value: data.pending, sub: `de ${formatBRL(data.total)} em despesas`, dot: 'bg-clay-400' },
               { label: 'A receber', value: data.inTotal - data.inReceived + data.toReceive, sub: data.hasShares ? `inclui ${formatBRL(data.toReceive)} de reembolsos` : 'recebimentos pendentes', dot: 'bg-sky-300' },
             ].map(s => (
