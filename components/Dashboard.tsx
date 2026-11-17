@@ -410,14 +410,38 @@ export const Dashboard: React.FC = () => {
             <p className="text-sm text-sand-400 mt-1">Tente outro período ou filtro.</p>
           </div>
         ) : (
+          <>
+          {/* Cabeçalho das colunas (computador): vencimento e status primeiro */}
+          <div className="hidden sm:flex items-center gap-3 md:gap-4 px-5 py-2 border-t border-sand-100 bg-sand-50/70 text-[10px] font-bold uppercase tracking-[0.12em] text-sand-400">
+            <span className="w-[72px] flex-shrink-0">Vencimento</span>
+            <span className="w-[104px] flex-shrink-0">Status</span>
+            <span className="flex-1">Descrição</span>
+            <span className="w-24 md:w-28 text-right">Valor</span>
+          </div>
           <ul className="divide-y divide-sand-100 border-t border-sand-100 max-h-[560px] overflow-y-auto scroll-thin-light">
             {listItems.map(item => {
               const cat = categoryByKey.get(item.type)!;
               const Icon = getCategoryIcon(cat.icon);
               const income = isIncome(cat);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
+              const statusButton = (
+                <button
+                  onClick={() => toggleStatus(item)}
+                  disabled={togglingId === item.id}
+                  title={item.status === 'PAID' ? (income ? 'Marcar como a receber' : 'Marcar como em aberto') : income ? 'Marcar como recebido' : 'Marcar como pago'}
+                  className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
+                >
+                  {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} income={income} />}
+                </button>
+              );
               return (
                 <li key={item.id} className="flex items-center gap-3 md:gap-4 px-4 sm:px-5 py-3 hover:bg-sand-50/60 transition-colors">
+                  {/* Computador: vencimento e status nas primeiras colunas */}
+                  <div className="hidden sm:block w-[72px] flex-shrink-0">
+                    <span className={`block text-sm tabular ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-700'}`}>{formatShortDate(item.date)}</span>
+                    {overdue && <span className="block text-[10px] font-semibold uppercase tracking-wide text-clay-600">{income ? 'atrasado' : 'vencido'}</span>}
+                  </div>
+                  <div className="hidden sm:block w-[104px] flex-shrink-0">{statusButton}</div>
                   <div className="grid place-items-center w-9 h-9 rounded-lg flex-shrink-0" style={{ backgroundColor: `${cat.color}1a`, color: cat.color }}>
                     <Icon className="w-4 h-4" />
                   </div>
@@ -426,7 +450,7 @@ export const Dashboard: React.FC = () => {
                     <p className="text-xs text-sand-400 truncate">
                       {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
                       {income && item.receiver && <span> · {item.receiver}</span>}
-                      <span className={overdue ? 'text-clay-600 font-semibold' : ''}> · {income ? 'recebe' : 'vence'} {formatShortDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}</span>
+                      <span className={`sm:hidden ${overdue ? 'text-clay-600 font-semibold' : ''}`}> · {income ? 'recebe' : 'vence'} {formatShortDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}</span>
                     </p>
                   </div>
                   {item.receiptUrl && (
@@ -435,15 +459,8 @@ export const Dashboard: React.FC = () => {
                     </a>
                   )}
                   {/* No celular: valor em cima e situação embaixo, para sobrar espaço para a descrição */}
-                  <div className="flex flex-col-reverse items-end gap-1 sm:flex-row sm:items-center sm:gap-4 flex-shrink-0">
-                  <button
-                    onClick={() => toggleStatus(item)}
-                    disabled={togglingId === item.id}
-                    title={item.status === 'PAID' ? (income ? 'Marcar como a receber' : 'Marcar como em aberto') : income ? 'Marcar como recebido' : 'Marcar como pago'}
-                    className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
-                  >
-                    {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} income={income} />}
-                  </button>
+                  <div className="flex flex-col-reverse items-end gap-1 flex-shrink-0">
+                  <div className="sm:hidden">{statusButton}</div>
                   <div className="sm:w-24 md:w-28 text-right flex-shrink-0">
                     <span className={`block text-sm font-semibold tabular whitespace-nowrap ${income ? 'text-brand-700' : 'text-sand-900'}`}>{income ? '+ ' : ''}{formatBRL(item.amount)}</span>
                     {(() => {
@@ -467,6 +484,7 @@ export const Dashboard: React.FC = () => {
               );
             })}
           </ul>
+          </>
         )}
         {listItems.length > 0 && (
           <div className="flex justify-between px-5 py-3 border-t border-sand-100 bg-sand-50/70 text-sm">
