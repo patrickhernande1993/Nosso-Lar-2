@@ -4,6 +4,7 @@ import { ExpenseType, ExpenseItem, ExpenseStatus, ExpenseShare } from '../types'
 import { StorageService } from '../services/storage';
 import { ShareService } from '../services/payerStorage';
 import { Button, Input, Modal, Card, PageHeader, StatusBadge } from './UI';
+import { PeriodFilter, useCategoryPeriod, inPeriod } from './PeriodFilter';
 import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
 import { Category, RECEIVERS, isIncome, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
@@ -25,6 +26,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   const parent = category.parent_key ? categoryByKey.get(category.parent_key) : undefined;
   // Subcategoria filtrada na página do grupo ('ALL' = todas)
   const [subFilter, setSubFilter] = useState('ALL');
+  const [period, setPeriod] = useCategoryPeriod();
   // Subcategoria em que o lançamento do formulário será gravado
   const [formType, setFormType] = useState(leaves[0]?.key ?? category.key);
   const type = formType;
@@ -365,7 +367,10 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   };
 
   // No grupo, o filtro de subcategoria vale para a lista e para os totais
-  const scopedItems = useMemo(() => (subFilter === 'ALL' ? items : items.filter(i => i.type === subFilter)), [items, subFilter]);
+  // Filtro de período (mês/ano): vale para os totais, as abas e a lista
+  const periodItems = useMemo(() => items.filter(i => inPeriod(i.date, period)), [items, period]);
+  const years = useMemo(() => Array.from(new Set(items.map(i => i.date.split('-')[0]))), [items]);
+  const scopedItems = useMemo(() => (subFilter === 'ALL' ? periodItems : periodItems.filter(i => i.type === subFilter)), [periodItems, subFilter]);
 
   const filteredItems = useMemo(() => {
     return scopedItems
@@ -622,10 +627,16 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         </Card>
       )}
 
+      {leaves.length > 0 && (
+        <div className="mb-4">
+          <PeriodFilter value={period} onChange={setPeriod} years={years} />
+        </div>
+      )}
+
       {isGroupPage && leaves.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1" role="tablist" aria-label="Filtrar por subcategoria">
           {[{ key: 'ALL', name: 'Todas', color: undefined as string | undefined }, ...leaves].map(l => {
-            const count = l.key === 'ALL' ? items.length : items.filter(i => i.type === l.key).length;
+            const count = l.key === 'ALL' ? periodItems.length : periodItems.filter(i => i.type === l.key).length;
             const active = subFilter === l.key;
             return (
               <button
@@ -683,8 +694,10 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-sand-600 font-medium">Nenhum lançamento encontrado</p>
-            <p className="text-sm text-sand-400 mt-1">Use "{income ? 'Novo recebimento' : 'Novo lançamento'}" para adicionar o primeiro.</p>
+            <p className="text-sand-600 font-medium">{items.length > 0 ? 'Nenhum lançamento neste período' : 'Nenhum lançamento encontrado'}</p>
+            <p className="text-sm text-sand-400 mt-1">
+              {items.length > 0 ? 'Troque o mês ou escolha "Todos os meses" para ver o histórico.' : <>Use "{income ? 'Novo recebimento' : 'Novo lançamento'}" para adicionar o primeiro.</>}
+            </p>
           </div>
         ) : (
           <>
