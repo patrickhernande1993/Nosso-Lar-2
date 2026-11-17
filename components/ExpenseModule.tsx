@@ -756,7 +756,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                           {pay ? <span className="flex items-center gap-1.5 min-w-0"><span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: pay.color }} /><span className="truncate">{pay.conta}</span></span> : <span className="text-sand-300">—</span>}
                         </td>
                         <td className="px-5 py-3.5 hidden lg:table-cell text-xs text-sand-600 whitespace-nowrap">{pay ? pay.metodo : <span className="text-sand-300">—</span>}</td>
-                        <td className="px-5 py-3.5 text-sm text-right font-semibold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</td>
+                        <td className={`px-5 py-3.5 text-sm text-right font-semibold tabular whitespace-nowrap ${income ? 'text-emerald-700' : 'text-red-600'}`}>{income ? '+ ' : '− '}{formatCurrency(item.amount)}</td>
                         <td className="px-5 py-3.5 text-center"><ReceiptLink url={item.receiptUrl} /></td>
                         <td className="px-5 py-3.5"><RowActions item={item} /></td>
                       </tr>
@@ -780,7 +780,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                           {income ? 'Previsto para' : 'Vence em'} {formatDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}
                         </p>
                       </div>
-                      <span className="font-bold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</span>
+                      <span className={`font-bold tabular whitespace-nowrap ${income ? 'text-emerald-700' : 'text-red-600'}`}>{income ? '+ ' : '− '}{formatCurrency(item.amount)}</span>
                     </div>
                     <div className="flex items-center justify-between mt-3">
                       <StatusBadge status={item.status} income={income} />

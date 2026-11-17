@@ -474,7 +474,7 @@ export const Dashboard: React.FC = () => {
                   <div className="flex flex-col-reverse items-end gap-1 flex-shrink-0">
                   <div className="sm:hidden">{statusButton}</div>
                   <div className="sm:w-24 md:w-28 text-right flex-shrink-0">
-                    <span className={`block text-sm font-semibold tabular whitespace-nowrap ${income ? 'text-brand-700' : 'text-sand-900'}`}>{income ? '+ ' : ''}{formatBRL(item.amount)}</span>
+                    <span className={`block text-sm font-semibold tabular whitespace-nowrap ${income ? 'text-emerald-700' : 'text-red-600'}`}>{income ? '+ ' : '− '}{formatBRL(item.amount)}</span>
                     {(() => {
                       const itemShares = sharesByExpense.get(String(item.id));
                       if (!itemShares?.length) return null;
