@@ -5,7 +5,7 @@ import { Card, PageHeader, StatusBadge } from './UI';
 import { StorageService } from '../services/storage';
 import { ShareService } from '../services/payerStorage';
 import { ExpenseItem, ExpenseShare } from '../types';
-import { useWallet, computeAccountBalance, ACCOUNT_TYPE_LABEL } from '../lib/WalletContext';
+import { useWallet, computeBalances, ACCOUNT_TYPE_LABEL } from '../lib/WalletContext';
 import { useCategories } from '../lib/CategoriesContext';
 import { formatBRL, isIncome } from '../lib/categories';
 
@@ -37,18 +37,17 @@ export const WalletPage: React.FC = () => {
 
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
 
-  const accountRows = useMemo(
-    () =>
-      accounts.map(a => {
-        const balance = computeAccountBalance(a, items, categoryByKey);
+  const accountRows = useMemo(() => {
+    const balances = computeBalances(accounts, items, categoryByKey);
+    return accounts.map(a => {
+        const balance = balances.get(a.id)!;
         const linkedCards = cards.filter(c => c.accountId === a.id).map(c => c.id);
         const cardDebt = items
           .filter(i => i.cardId && linkedCards.includes(i.cardId) && i.status === 'PENDING' && !isIncome(categoryByKey.get(i.type)))
           .reduce((s, i) => s + Number(i.amount), 0);
         return { account: a, ...balance, cardDebt };
-      }),
-    [accounts, cards, items, categoryByKey]
-  );
+      });
+  }, [accounts, cards, items, categoryByKey]);
 
   const cardRows = useMemo(
     () =>

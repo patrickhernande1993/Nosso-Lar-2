@@ -43,16 +43,18 @@ const cardRow = (c: Omit<CreditCard, 'id'>) => ({
 
 export const WalletService = {
   /** Se as tabelas não existirem (script supabase_contas_cartoes.sql), tableMissing = true. */
-  list: async (): Promise<{ accounts: Account[]; cards: CreditCard[]; tableMissing: boolean }> => {
-    const [acc, cards] = await Promise.all([
+  list: async (): Promise<{ accounts: Account[]; cards: CreditCard[]; tableMissing: boolean; reserveMissing: boolean }> => {
+    const [acc, cards, reserveCol] = await Promise.all([
       supabase.from('accounts').select('*').order('name'),
       supabase.from('credit_cards').select('*').order('name'),
+      // Coluna criada por supabase_reserva.sql
+      supabase.from('expenses').select('reserve_account_id').limit(1),
     ]);
     if (acc.error || cards.error) {
       console.warn('Contas/cartões indisponíveis:', (acc.error || cards.error)?.message);
-      return { accounts: [], cards: [], tableMissing: true };
+      return { accounts: [], cards: [], tableMissing: true, reserveMissing: true };
     }
-    return { accounts: (acc.data ?? []).map(toAccount), cards: (cards.data ?? []).map(toCard), tableMissing: false };
+    return { accounts: (acc.data ?? []).map(toAccount), cards: (cards.data ?? []).map(toCard), tableMissing: false, reserveMissing: !!reserveCol.error };
   },
 
   saveAccount: async (a: Omit<Account, 'id'> & { id?: string }) => {

@@ -56,6 +56,7 @@ const fromDb = (item: any): ExpenseItem => ({
   ...(item.card_id != null ? { cardId: item.card_id } : {}),
   ...(item.payment_date != null ? { paymentDate: String(item.payment_date).slice(0, 10) } : {}),
   ...(item.is_reserve_withdrawal ? { isReserve: true } : {}),
+  ...(item.reserve_account_id != null ? { reserveAccountId: item.reserve_account_id } : {}),
 });
 
 // Campos opcionais: só são enviados quando definidos (as colunas podem não existir antes dos scripts)
@@ -65,6 +66,7 @@ const optionalFields = (item: ExpenseItem) => ({
   ...(item.cardId !== undefined ? { card_id: item.cardId } : {}),
   ...(item.paymentDate !== undefined ? { payment_date: item.paymentDate } : {}),
   ...(item.isReserve !== undefined ? { is_reserve_withdrawal: item.isReserve } : {}),
+  ...(item.reserveAccountId !== undefined ? { reserve_account_id: item.reserveAccountId } : {}),
 });
 
 export const StorageService = {

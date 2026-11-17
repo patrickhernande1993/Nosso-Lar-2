@@ -8,7 +8,7 @@ import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
 import { Category, RECEIVERS, isIncome, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
 import { useCategories } from '../lib/CategoriesContext';
-import { useWallet } from '../lib/WalletContext';
+import { useWallet, isInvestmentCategory } from '../lib/WalletContext';
 
 interface ExpenseModuleProps {
   category: Category;
@@ -32,20 +32,27 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   const [receiver, setReceiver] = useState('');
   const [batchReceiver, setBatchReceiver] = useState('');
   // Conta/cartão: '' | 'acc:<id>' | 'card:<id>'
-  const { accounts, cards, accountById, cardById, tableMissing: walletMissing } = useWallet();
+  const { accounts, cards, accountById, cardById, tableMissing: walletMissing, reserveMissing } = useWallet();
   const [payMethod, setPayMethod] = useState('');
   const [batchPayMethod, setBatchPayMethod] = useState('');
   const [isReserve, setIsReserve] = useState(false);
+  // Conta cuja reserva recebe (aporte) ou cede (resgate) o valor
+  const [reserveAcc, setReserveAcc] = useState('');
+  const [batchReserveAcc, setBatchReserveAcc] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const methodOf = (i: ExpenseItem) => (i.cardId ? `card:${i.cardId}` : i.accountId ? `acc:${i.accountId}` : '');
-  const walletFields = (method: string, reserve: boolean) =>
-    walletMissing
-      ? {}
-      : {
-          accountId: method.startsWith('acc:') ? method.slice(4) : null,
-          cardId: method.startsWith('card:') ? method.slice(5) : null,
-          isReserve: method.startsWith('acc:') ? reserve : false,
-        };
+  const walletFields = (method: string, reserve: boolean, reserveAccId = '') => {
+    if (walletMissing) return {};
+    const accountId = method.startsWith('acc:') ? method.slice(4) : null;
+    const invest = isInvestmentCategory(categoryByKey.get(formType));
+    return {
+      accountId,
+      cardId: method.startsWith('card:') ? method.slice(5) : null,
+      // Em aporte/resgate a reserva é escolhida explicitamente; "pago com a reserva" não se aplica
+      isReserve: method.startsWith('acc:') && !invest ? reserve : false,
+      ...(reserveMissing ? {} : { reserveAccountId: invest ? reserveAccId || accountId : null }),
+    };
+  };
   const defaultFormType = () => (subFilter !== 'ALL' ? subFilter : leaves[0]?.key ?? category.key);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,6 +126,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setReceiver(item.receiver ?? '');
       setPayMethod(methodOf(item));
       setIsReserve(!!item.isReserve);
+      setReserveAcc(item.reserveAccountId ?? '');
       setPaymentDate(item.paymentDate ?? '');
       setExistingReceiptUrl(item.receiptUrl);
       const existing = sharesByExpense.get(String(item.id)) ?? [];
@@ -130,6 +138,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setReceiver('');
       setPayMethod('');
       setIsReserve(false);
+      setReserveAcc('');
       setPaymentDate('');
       setEditingId(null);
       setDesc('');
@@ -168,6 +177,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     setBatchShareRows([]);
     setBatchReceiver('');
     setBatchPayMethod('');
+    setBatchReserveAcc('');
     setIsBatchModalOpen(true);
   };
 
@@ -212,7 +222,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         receiptUrl: existingReceiptUrl,
         status: status,
         ...(income ? { receiver: receiver || null } : {}),
-        ...walletFields(payMethod, isReserve),
+        ...walletFields(payMethod, isReserve, reserveAcc),
         ...(walletMissing ? {} : { paymentDate: status === 'PAID' ? paymentDate || new Date().toISOString().slice(0, 10) : null }),
       };
 
@@ -311,7 +321,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 createdAt: Date.now(),
                 status: 'PENDING',
                 ...(income ? { receiver: batchReceiver || null } : {}),
-                ...walletFields(batchPayMethod, false)
+                ...walletFields(batchPayMethod, false, batchReserveAcc)
             });
         }
 
@@ -494,12 +504,60 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       </div>
     );
 
+  const investForm = !walletMissing && accounts.length > 0 && isInvestmentCategory(categoryByKey.get(formType));
+  const accountOptions = accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.owner ? ` (${a.owner})` : ''}</option>);
+  const fieldCls = 'select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none';
+
+  /** Aporte (despesa): sai do corrente -> vai para a reserva. Resgate (recebimento): sai da reserva -> entra no corrente. */
+  const ReserveTransfer = ({ method, onMethod, reserve, onReserve, disabled }: {
+    method: string; onMethod: (v: string) => void; reserve: string; onReserve: (v: string) => void; disabled?: boolean;
+  }) => {
+    const accountId = method.startsWith('acc:') ? method.slice(4) : '';
+    const checking = (
+      <div>
+        <label className="block text-xs font-semibold text-sand-600 mb-1.5">{income ? 'Entra na conta (corrente)' : 'Sai da conta (corrente)'}</label>
+        <select value={accountId} onChange={e => { onMethod(e.target.value ? `acc:${e.target.value}` : ''); if (!reserve) onReserve(e.target.value); }} disabled={disabled} className={fieldCls}>
+          <option value="">Escolha a conta</option>
+          {accountOptions}
+        </select>
+      </div>
+    );
+    const reserveSel = (
+      <div>
+        <label className="block text-xs font-semibold text-sand-600 mb-1.5">{income ? 'Sai da reserva de' : 'Vai para a reserva de'}</label>
+        <select value={reserve || accountId} onChange={e => onReserve(e.target.value)} disabled={disabled || reserveMissing} className={fieldCls}>
+          <option value="">Escolha a conta</option>
+          {accountOptions}
+        </select>
+      </div>
+    );
+    return (
+      <div className="rounded-2xl border border-brand-200 bg-brand-50/40 p-4 space-y-3">
+        <p className="text-xs font-semibold text-brand-800">{income ? 'Resgate da reserva' : 'Aporte na reserva'}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {income ? <>{reserveSel}{checking}</> : <>{checking}{reserveSel}</>}
+        </div>
+        {reserveMissing && <p className="text-xs text-sand-500">Para escolher outra conta como reserva, rode o script supabase_reserva.sql. Por enquanto vale a mesma conta.</p>}
+      </div>
+    );
+  };
+
   // Conta/cartão usado, abaixo da descrição
   const MethodTag = ({ item }: { item: ExpenseItem }) => {
     const card = item.cardId ? cardById.get(item.cardId) : undefined;
     const acc = !card && item.accountId ? accountById.get(item.accountId) : undefined;
     if (!card && !acc) return null;
     const Icon = card ? CardIcon : Landmark;
+    const itemCat = categoryByKey.get(item.type);
+    if (acc && isInvestmentCategory(itemCat) && !item.isReserve) {
+      const res = accountById.get(item.reserveAccountId ?? acc.id) ?? acc;
+      return (
+        <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-sand-500">
+          <Landmark className="w-3 h-3" style={{ color: acc.color }} />
+          {isIncome(itemCat) ? `reserva ${res.name} → ${acc.name}` : `${acc.name} → reserva ${res.name}`}
+        </span>
+      );
+    }
     return (
       <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-sand-500">
         <Icon className="w-3 h-3" style={{ color: (card ?? acc)!.color }} /> {(card ?? acc)!.name}
@@ -704,8 +762,10 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
           
           {SubcategorySelect({ disabled: isSaving })}
           {ReceiverSelect({ value: receiver, onChange: setReceiver, disabled: isSaving })}
-          {PayMethodSelect({ value: payMethod, onChange: setPayMethod, disabled: isSaving })}
-          {!walletMissing && payMethod.startsWith('acc:') && (
+          {investForm
+            ? ReserveTransfer({ method: payMethod, onMethod: setPayMethod, reserve: reserveAcc, onReserve: setReserveAcc, disabled: isSaving })
+            : PayMethodSelect({ value: payMethod, onChange: setPayMethod, disabled: isSaving })}
+          {!walletMissing && !investForm && payMethod.startsWith('acc:') && (
             <label className="flex items-center gap-2 text-sm text-sand-700 -mt-1 cursor-pointer select-none">
               <input type="checkbox" checked={isReserve} onChange={e => setIsReserve(e.target.checked)} disabled={isSaving} className="w-4 h-4 accent-brand-700" />
               {income ? 'Guardar na reserva (investimentos)' : 'Pago com a reserva (investimentos)'}
@@ -849,7 +909,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         <form onSubmit={handleBatchSave} className="space-y-4">
             {SubcategorySelect({ disabled: isSaving })}
             {ReceiverSelect({ value: batchReceiver, onChange: setBatchReceiver, disabled: isSaving })}
-            {PayMethodSelect({ value: batchPayMethod, onChange: setBatchPayMethod, disabled: isSaving })}
+            {investForm
+              ? ReserveTransfer({ method: batchPayMethod, onMethod: setBatchPayMethod, reserve: batchReserveAcc, onReserve: setBatchReserveAcc, disabled: isSaving })
+              : PayMethodSelect({ value: batchPayMethod, onChange: setBatchPayMethod, disabled: isSaving })}
             <div className="bg-brand-50 p-4 rounded-lg border border-brand-100 text-sm text-brand-800 mb-4 flex items-start gap-2">
                 <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>

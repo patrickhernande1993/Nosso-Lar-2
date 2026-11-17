@@ -25,6 +25,7 @@ export interface ExpenseItem {
   cardId?: string | null; // cartão de crédito usado
   paymentDate?: string | null; // YYYY-MM-DD em que foi pago/recebido
   isReserve?: boolean; // pago com a reserva (investimentos) ou depositado nela
+  reserveAccountId?: string | null; // aporte/resgate: conta cuja reserva recebe ou cede o valor
 }
 
 // --- Contas e cartões ---
