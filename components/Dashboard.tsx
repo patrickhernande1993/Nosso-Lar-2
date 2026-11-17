@@ -258,13 +258,13 @@ export const Dashboard: React.FC = () => {
                 <ChevronLeft className="w-4 h-4" />
               </button>
             )}
-            <select aria-label="Mês" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={`${selectCls} flex-1 md:w-40`}>
+            <select aria-label="Mês" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={`${selectCls} flex-1 min-w-0 md:flex-none md:w-40`}>
               <option value="">Todos os meses</option>
               {MONTHS.map((m, i) => (
                 <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>
               ))}
             </select>
-            <select aria-label="Ano" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className={`${selectCls} flex-1 md:w-32`}>
+            <select aria-label="Ano" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className={`${selectCls} flex-1 min-w-0 md:flex-none md:w-32`}>
               <option value="">Todos os anos</option>
               {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
@@ -417,12 +417,12 @@ export const Dashboard: React.FC = () => {
               const income = isIncome(cat);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
               return (
-                <li key={item.id} className="flex items-center gap-3 md:gap-4 px-5 py-3 hover:bg-sand-50/60 transition-colors">
+                <li key={item.id} className="flex items-center gap-3 md:gap-4 px-4 sm:px-5 py-3 hover:bg-sand-50/60 transition-colors">
                   <div className="grid place-items-center w-9 h-9 rounded-lg flex-shrink-0" style={{ backgroundColor: `${cat.color}1a`, color: cat.color }}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-sand-900 truncate">{item.description}</p>
+                    <p className="text-sm font-medium text-sand-900 line-clamp-2 break-words sm:truncate">{item.description}</p>
                     <p className="text-xs text-sand-400 truncate">
                       {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
                       {income && item.receiver && <span> · {item.receiver}</span>}
@@ -434,6 +434,8 @@ export const Dashboard: React.FC = () => {
                       <Paperclip className="w-4 h-4" />
                     </a>
                   )}
+                  {/* No celular: valor em cima e situação embaixo, para sobrar espaço para a descrição */}
+                  <div className="flex flex-col-reverse items-end gap-1 sm:flex-row sm:items-center sm:gap-4 flex-shrink-0">
                   <button
                     onClick={() => toggleStatus(item)}
                     disabled={togglingId === item.id}
@@ -442,8 +444,8 @@ export const Dashboard: React.FC = () => {
                   >
                     {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} income={income} />}
                   </button>
-                  <div className="w-24 md:w-28 text-right flex-shrink-0">
-                    <span className={`block text-sm font-semibold tabular ${income ? 'text-brand-700' : 'text-sand-900'}`}>{income ? '+ ' : ''}{formatBRL(item.amount)}</span>
+                  <div className="sm:w-24 md:w-28 text-right flex-shrink-0">
+                    <span className={`block text-sm font-semibold tabular whitespace-nowrap ${income ? 'text-brand-700' : 'text-sand-900'}`}>{income ? '+ ' : ''}{formatBRL(item.amount)}</span>
                     {(() => {
                       const itemShares = sharesByExpense.get(String(item.id));
                       if (!itemShares?.length) return null;
@@ -459,6 +461,7 @@ export const Dashboard: React.FC = () => {
                         </span>
                       );
                     })()}
+                  </div>
                   </div>
                 </li>
               );
