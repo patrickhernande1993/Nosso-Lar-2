@@ -18,7 +18,7 @@ interface ExpenseModuleProps {
 
 export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcategories }) => {
   const { name: title, description } = category;
-  const { categoryByKey, kindMissing } = useCategories();
+  const { categoryByKey, kindMissing, expenseTree, incomeTree } = useCategories();
   const isGroupPage = !!category.is_group;
   const leaves = useMemo(() => (isGroupPage ? subcategories ?? [] : [category]), [isGroupPage, subcategories, category]);
   const leafKeys = leaves.map(l => l.key).join('|');
@@ -384,20 +384,33 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     );
   };
 
-  const SubcategorySelect = ({ disabled }: { disabled?: boolean }) =>
-    isGroupPage ? (
-      <div>
-        <label className="block text-xs font-semibold text-sand-600 mb-1.5">Subcategoria</label>
-        <select
-          value={formType}
-          onChange={e => setFormType(e.target.value)}
-          disabled={disabled}
-          className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none"
-        >
-          {leaves.map(l => <option key={l.key} value={l.key}>{l.name}</option>)}
-        </select>
-      </div>
-    ) : null;
+  // Categoria do lançamento: permite corrigir um lançamento feito na categoria errada.
+  // Lista todas as categorias do mesmo tipo (despesa ou recebimento), agrupadas como no menu.
+  const sameKindTree = (income ? incomeTree : expenseTree);
+  const SubcategorySelect = ({ disabled }: { disabled?: boolean }) => (
+    <div>
+      <label className="block text-xs font-semibold text-sand-600 mb-1.5">Categoria</label>
+      <select
+        value={formType}
+        onChange={e => setFormType(e.target.value)}
+        disabled={disabled}
+        className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none"
+      >
+        {sameKindTree.map(({ category: c, children }) =>
+          c.is_group ? (
+            <optgroup key={c.key} label={c.name}>
+              {children.map(ch => <option key={ch.key} value={ch.key}>{ch.name}</option>)}
+            </optgroup>
+          ) : (
+            <option key={c.key} value={c.key}>{c.name}</option>
+          )
+        )}
+      </select>
+      {editingId && !leaves.some(l => l.key === formType) && (
+        <p className="text-xs text-sand-500 mt-1">Ao salvar, o lançamento sai desta tela e vai para "{categoryByKey.get(formType)?.name}".</p>
+      )}
+    </div>
+  );
 
   // Avatares dos pagantes e a parte que fica com vocês, abaixo da descrição
   const SplitInfo = ({ item }: { item: ExpenseItem }) => {
