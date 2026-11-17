@@ -6,7 +6,7 @@ import { StorageService } from '../services/storage';
 import { ExpenseItem, ExpenseShare } from '../types';
 import { ShareService } from '../services/payerStorage';
 import { usePayers, initials } from '../lib/PayersContext';
-import { useWallet } from '../lib/WalletContext';
+import { useWallet, isInvestmentCategory } from '../lib/WalletContext';
 import { Card, PageHeader, StatusBadge } from './UI';
 import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
@@ -50,7 +50,25 @@ export const Dashboard: React.FC = () => {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [shares, setShares] = useState<ExpenseShare[]>([]);
   const { payers, payerById } = usePayers();
-  const { tableMissing: walletMissing } = useWallet();
+  const { tableMissing: walletMissing, accountById, cardById } = useWallet();
+
+  // Conta e método de pagamento de um lançamento (cartão, conta ou reserva)
+  const payInfo = (item: ExpenseItem): { conta: string; metodo: string; color: string } | null => {
+    const card = item.cardId ? cardById.get(item.cardId) : undefined;
+    if (card) {
+      const acc = card.accountId ? accountById.get(card.accountId) : undefined;
+      return { conta: acc?.name ?? card.name, metodo: `Cartão ${card.name}`, color: card.color };
+    }
+    const acc = item.accountId ? accountById.get(item.accountId) : undefined;
+    if (!acc) return null;
+    const cat = categoryByKey.get(item.type);
+    if (isInvestmentCategory(cat) && !item.isReserve) {
+      const res = accountById.get(item.reserveAccountId ?? acc.id) ?? acc;
+      return { conta: isIncome(cat) ? `Reserva ${res.name} → ${acc.name}` : `${acc.name} → reserva ${res.name}`, metodo: 'Transferência', color: acc.color };
+    }
+    if (item.isReserve) return { conta: acc.name, metodo: 'Reserva', color: acc.color };
+    return { conta: acc.name, metodo: 'Pix / débito', color: acc.color };
+  };
 
   useEffect(() => {
     Promise.all([StorageService.getAll(), ShareService.getAll()])
@@ -416,6 +434,8 @@ export const Dashboard: React.FC = () => {
             <span className="w-[72px] flex-shrink-0">Vencimento</span>
             <span className="w-[104px] flex-shrink-0">Status</span>
             <span className="flex-1">Descrição</span>
+            <span className="hidden lg:block w-40 flex-shrink-0">Conta</span>
+            <span className="hidden lg:block w-32 flex-shrink-0">Método</span>
             <span className="w-24 md:w-28 text-right">Valor</span>
           </div>
           <ul className="divide-y divide-sand-100 border-t border-sand-100 max-h-[560px] overflow-y-auto scroll-thin-light">
@@ -424,6 +444,7 @@ export const Dashboard: React.FC = () => {
               const Icon = getCategoryIcon(cat.icon);
               const income = isIncome(cat);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
+              const pay = payInfo(item);
               const statusButton = (
                 <button
                   onClick={() => toggleStatus(item)}
@@ -450,8 +471,15 @@ export const Dashboard: React.FC = () => {
                     <p className="text-xs text-sand-400 truncate">
                       {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
                       {income && item.receiver && <span> · {item.receiver}</span>}
+                      {pay && <span className="lg:hidden"> · {pay.conta} · {pay.metodo}</span>}
                       <span className={`sm:hidden ${overdue ? 'text-clay-600 font-semibold' : ''}`}> · {income ? 'recebe' : 'vence'} {formatShortDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}</span>
                     </p>
+                  </div>
+                  <div className="hidden lg:flex items-center gap-1.5 w-40 flex-shrink-0 min-w-0 text-xs text-sand-600" title={pay?.conta}>
+                    {pay ? <><span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: pay.color }} /><span className="truncate">{pay.conta}</span></> : <span className="text-sand-300">—</span>}
+                  </div>
+                  <div className="hidden lg:block w-32 flex-shrink-0 min-w-0 text-xs text-sand-600 truncate" title={pay?.metodo}>
+                    {pay ? pay.metodo : <span className="text-sand-300">—</span>}
                   </div>
                   {item.receiptUrl && (
                     <a href={item.receiptUrl} target="_blank" rel="noopener noreferrer" title="Ver comprovante" className="hidden sm:grid place-items-center p-1.5 rounded-lg text-brand-700 hover:bg-brand-50">
