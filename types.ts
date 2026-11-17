@@ -19,7 +19,8 @@ export interface ExpenseItem {
   monthYear?: string; // Format MM/YYYY for recurring items
   createdAt: number;
   receiptUrl?: string; // URL pública do comprovante
-  status: ExpenseStatus;
+  status: ExpenseStatus; // em recebimentos: PAID = recebido, PENDING = a receber
+  receiver?: string | null; // recebimentos: Isabelly, Patrick ou Ambos
 }
 
 // --- Pagantes e divisão de despesas ---

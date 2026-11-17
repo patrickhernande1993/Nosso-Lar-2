@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange } from 'lucide-react';
+import { Plus, Trash2, Edit2, Search, Loader2, Paperclip, ExternalLink, Eye, Layers, CalendarRange, UserRound } from 'lucide-react';
 import { ExpenseType, ExpenseItem, ExpenseStatus, ExpenseShare } from '../types';
 import { StorageService } from '../services/storage';
 import { ShareService } from '../services/payerStorage';
 import { Button, Input, Modal, Card, PageHeader, StatusBadge } from './UI';
 import { SplitEditor, ShareRow, toRows, validateRows } from './SplitEditor';
-import { Category, formatBRL as formatCurrency } from '../lib/categories';
+import { Category, RECEIVERS, isIncome, formatBRL as formatCurrency } from '../lib/categories';
 import { usePayers, initials } from '../lib/PayersContext';
 import { useCategories } from '../lib/CategoriesContext';
 
@@ -17,7 +17,7 @@ interface ExpenseModuleProps {
 
 export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcategories }) => {
   const { name: title, description } = category;
-  const { categoryByKey } = useCategories();
+  const { categoryByKey, kindMissing } = useCategories();
   const isGroupPage = !!category.is_group;
   const leaves = useMemo(() => (isGroupPage ? subcategories ?? [] : [category]), [isGroupPage, subcategories, category]);
   const leafKeys = leaves.map(l => l.key).join('|');
@@ -27,6 +27,9 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   // Subcategoria em que o lançamento do formulário será gravado
   const [formType, setFormType] = useState(leaves[0]?.key ?? category.key);
   const type = formType;
+  const income = isIncome(category);
+  const [receiver, setReceiver] = useState('');
+  const [batchReceiver, setBatchReceiver] = useState('');
   const defaultFormType = () => (subFilter !== 'ALL' ? subFilter : leaves[0]?.key ?? category.key);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,6 +100,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       setDate(item.date);
       setMonthYear(item.monthYear || '');
       setStatus(item.status);
+      setReceiver(item.receiver ?? '');
       setExistingReceiptUrl(item.receiptUrl);
       const existing = sharesByExpense.get(String(item.id)) ?? [];
       setSplitEnabled(existing.length > 0);
@@ -104,6 +108,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     } else {
       setSplitEnabled(false);
       setShareRows([]);
+      setReceiver('');
       setEditingId(null);
       setDesc('');
       setAmount('');
@@ -139,6 +144,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     setBatchDueDay('10');
     setBatchSplitEnabled(false);
     setBatchShareRows([]);
+    setBatchReceiver('');
     setIsBatchModalOpen(true);
   };
 
@@ -181,7 +187,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         monthYear: finalMonthYear,
         createdAt: Date.now(),
         receiptUrl: existingReceiptUrl,
-        status: status
+        status: status,
+        ...(income ? { receiver: receiver || null } : {})
       };
 
       // Valida a divisão antes de gravar qualquer coisa
@@ -277,7 +284,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 date: isoDate,
                 monthYear: monthYearStr,
                 createdAt: Date.now(),
-                status: 'PENDING'
+                status: 'PENDING',
+                ...(income ? { receiver: batchReceiver || null } : {})
             });
         }
 
@@ -392,6 +400,36 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
     );
   };
 
+  // Quem recebeu (só em recebimentos)
+  const ReceiverTag = ({ item }: { item: ExpenseItem }) =>
+    income && item.receiver ? (
+      <span className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-sand-500">
+        <UserRound className="w-3 h-3" /> {item.receiver}
+      </span>
+    ) : null;
+
+  const ReceiverSelect = ({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) =>
+    income && !kindMissing ? (
+      <div>
+        <span className="block text-xs font-semibold text-sand-600 mb-1.5">Quem recebeu</span>
+        <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="radiogroup" aria-label="Quem recebeu">
+          {RECEIVERS.map(r => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={value === r}
+              onClick={() => onChange(value === r ? '' : r)}
+              disabled={disabled}
+              className={`py-2 rounded-lg text-sm font-semibold transition-all ${value === r ? 'bg-white shadow-sm text-brand-700' : 'text-sand-500 hover:text-sand-800'}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const today = new Date().toISOString().slice(0, 10);
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
@@ -424,7 +462,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
   return (
     <div>
       <PageHeader
-        eyebrow={isGroupPage ? 'Grupo de categorias' : parent ? parent.name : 'Categoria'}
+        eyebrow={isGroupPage ? 'Grupo de categorias' : parent ? parent.name : income ? 'Recebimentos' : 'Categoria'}
         title={title}
         description={description}
         actions={
@@ -434,7 +472,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 <Layers className="w-4 h-4" /> Gerar em lote
               </Button>
               <Button onClick={() => handleOpenModal()} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4" /> Novo lançamento
+                <Plus className="w-4 h-4" /> {income ? 'Novo recebimento' : 'Novo lançamento'}
               </Button>
             </>
           ) : undefined
@@ -476,8 +514,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       <div className={`grid grid-cols-1 gap-3 mb-6 ${totals.hasShares ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
         {[
           { label: 'Total', value: totals.total, cls: 'text-sand-900', dot: category.color, sub: totals.hasShares ? `Sua parte ${formatCurrency(totals.mine)}` : undefined },
-          { label: 'Pago', value: totals.paid, cls: 'text-brand-700', dot: '#3a7d61' },
-          { label: 'Em aberto', value: totals.pending, cls: 'text-clay-600', dot: '#d6824f' },
+          { label: income ? 'Recebido' : 'Pago', value: totals.paid, cls: 'text-brand-700', dot: '#3a7d61' },
+          { label: income ? 'A receber' : 'Em aberto', value: totals.pending, cls: 'text-clay-600', dot: '#d6824f' },
           ...(totals.hasShares ? [{ label: 'A receber', value: totals.toReceive, cls: 'text-[#5279a3]', dot: '#5279a3', sub: 'Reembolsos pendentes' }] : []),
         ].map(s => (
           <div key={s.label} className="bg-white rounded-2xl border border-sand-200 shadow-soft px-5 py-4">
@@ -510,7 +548,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         ) : filteredItems.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-sand-600 font-medium">Nenhum lançamento encontrado</p>
-            <p className="text-sm text-sand-400 mt-1">Use "Novo lançamento" para adicionar o primeiro.</p>
+            <p className="text-sm text-sand-400 mt-1">Use "{income ? 'Novo recebimento' : 'Novo lançamento'}" para adicionar o primeiro.</p>
           </div>
         ) : (
           <>
@@ -520,7 +558,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 <thead>
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-sand-400 bg-sand-50/70">
                     <th className="px-5 py-3">Descrição</th>
-                    <th className="px-5 py-3">Vencimento</th>
+                    <th className="px-5 py-3">{income ? 'Data' : 'Vencimento'}</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3 text-right">Valor</th>
                     <th className="px-5 py-3 text-center">Comprovante</th>
@@ -532,11 +570,11 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                     const overdue = item.status === 'PENDING' && item.date < today;
                     return (
                       <tr key={item.id} className="hover:bg-sand-50/60 transition-colors">
-                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><SplitInfo item={item} /></div></td>
+                        <td className="px-5 py-3.5 text-sm font-medium text-sand-900">{item.description}<div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div></td>
                         <td className={`px-5 py-3.5 text-sm tabular whitespace-nowrap ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-500'}`}>
-                          {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">vencido</span>}
+                          {formatDate(item.date)}{overdue && <span className="ml-1.5 text-[10px] uppercase tracking-wider">{income ? 'atrasado' : 'vencido'}</span>}
                         </td>
-                        <td className="px-5 py-3.5"><StatusBadge status={item.status} /></td>
+                        <td className="px-5 py-3.5"><StatusBadge status={item.status} income={income} /></td>
                         <td className="px-5 py-3.5 text-sm text-right font-semibold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</td>
                         <td className="px-5 py-3.5 text-center"><ReceiptLink url={item.receiptUrl} /></td>
                         <td className="px-5 py-3.5"><RowActions item={item} /></td>
@@ -556,15 +594,15 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                     <div className="flex justify-between items-start gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-sand-900 text-sm line-clamp-2">{item.description}</p>
-                        <div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><SplitInfo item={item} /></div>
+                        <div className="flex flex-wrap items-center gap-x-3"><SubTag item={item} /><ReceiverTag item={item} /><SplitInfo item={item} /></div>
                         <p className={`text-xs mt-1 tabular ${overdue ? 'text-clay-600 font-semibold' : 'text-sand-400'}`}>
-                          Vence em {formatDate(item.date)}{overdue && ' · vencido'}
+                          {income ? 'Previsto para' : 'Vence em'} {formatDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}
                         </p>
                       </div>
                       <span className="font-bold text-sand-900 tabular whitespace-nowrap">{formatCurrency(item.amount)}</span>
                     </div>
                     <div className="flex items-center justify-between mt-3">
-                      <StatusBadge status={item.status} />
+                      <StatusBadge status={item.status} income={income} />
                       <div className="flex items-center gap-1">
                         <ReceiptLink url={item.receiptUrl} compact />
                         <RowActions item={item} />
@@ -587,12 +625,13 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
         <form onSubmit={handleSave} className="space-y-4">
           
           {SubcategorySelect({ disabled: isSaving })}
+          {ReceiverSelect({ value: receiver, onChange: setReceiver, disabled: isSaving })}
 
           {/* Status Selection */}
           <div>
             <span className="block text-xs font-semibold text-sand-600 mb-1.5">Status</span>
             <div className="grid grid-cols-2 gap-1 p-1 bg-sand-100 rounded-xl" role="radiogroup">
-              {([['PENDING', 'Em aberto', 'text-clay-700'], ['PAID', 'Pago', 'text-brand-700']] as const).map(([value, label, cls]) => (
+              {([['PENDING', income ? 'A receber' : 'Em aberto', 'text-clay-700'], ['PAID', income ? 'Recebido' : 'Pago', 'text-brand-700']] as const).map(([value, label, cls]) => (
                 <button
                   key={value}
                   type="button"
@@ -641,7 +680,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 disabled={isSaving}
             />
             <Input
-                label="Data de Vencimento"
+                label={income ? 'Data do recebimento' : 'Data de Vencimento'}
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -650,14 +689,14 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
             />
           </div>
 
-          <SplitEditor
+          {!income && <SplitEditor
             enabled={splitEnabled}
             onToggle={setSplitEnabled}
             rows={shareRows}
             onChange={setShareRows}
             total={parseFloat(amount) || 0}
             disabled={isSaving}
-          />
+          />}
 
           <div className="bg-sand-50 p-4 rounded-lg border border-sand-100">
              <label className="block text-sm font-medium text-sand-700 mb-2">
@@ -724,6 +763,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
       >
         <form onSubmit={handleBatchSave} className="space-y-4">
             {SubcategorySelect({ disabled: isSaving })}
+            {ReceiverSelect({ value: batchReceiver, onChange: setBatchReceiver, disabled: isSaving })}
             <div className="bg-brand-50 p-4 rounded-lg border border-brand-100 text-sm text-brand-800 mb-4 flex items-start gap-2">
                 <CalendarRange className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>
@@ -778,7 +818,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                     disabled={isSaving}
                 />
                 <Input
-                    label="Dia Vencimento"
+                    label={income ? 'Dia do recebimento' : 'Dia Vencimento'}
                     type="number"
                     min="1"
                     max="31"
@@ -789,7 +829,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 />
             </div>
 
-            <SplitEditor
+            {!income && <SplitEditor
                 enabled={batchSplitEnabled}
                 onToggle={setBatchSplitEnabled}
                 rows={batchShareRows}
@@ -797,7 +837,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ category, subcateg
                 total={parseFloat(batchAmount) || 0}
                 disabled={isSaving}
                 showReimbursed={false}
-            />
+            />}
 
             <div className="pt-4 flex flex-col-reverse sm:flex-row justify-end gap-3">
                 <Button type="button" variant="ghost" onClick={() => setIsBatchModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto">

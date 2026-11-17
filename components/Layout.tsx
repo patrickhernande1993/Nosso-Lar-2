@@ -93,7 +93,7 @@ const BrandCompact: React.FC = () => (
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
-  const { tree } = useCategories();
+  const { expenseTree, incomeTree } = useCategories();
   const { session, signOut, displayName, updateName } = useAuth();
   const [isNameOpen, setIsNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -159,27 +159,34 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <NavItem item={{ label: 'Visão geral', path: '/', icon: LayoutDashboard }} />
           </div>
 
-          <div>
-            {sectionTitle('Categorias')}
-            <div className="space-y-0.5">
-              {tree.map(({ category, children }) =>
-                category.is_group ? (
-                  <NavGroup
-                    key={category.key}
-                    group={category}
-                    children={children}
-                    collapsed={collapsed.includes(category.key)}
-                    onToggle={() => toggleGroup(category.key)}
-                  />
-                ) : (
-                  <NavItem
-                    key={category.key}
-                    item={{ label: category.name, path: categoryPath(category.key), icon: getCategoryIcon(category.icon), dot: category.color }}
-                  />
-                )
-              )}
-            </div>
-          </div>
+          {[
+            { title: 'Despesas', nodes: expenseTree },
+            { title: 'Recebimentos', nodes: incomeTree },
+          ]
+            .filter(s => s.nodes.length > 0)
+            .map(section => (
+              <div key={section.title}>
+                {sectionTitle(section.title)}
+                <div className="space-y-0.5">
+                  {section.nodes.map(({ category, children }) =>
+                    category.is_group ? (
+                      <NavGroup
+                        key={category.key}
+                        group={category}
+                        children={children}
+                        collapsed={collapsed.includes(category.key)}
+                        onToggle={() => toggleGroup(category.key)}
+                      />
+                    ) : (
+                      <NavItem
+                        key={category.key}
+                        item={{ label: category.name, path: categoryPath(category.key), icon: getCategoryIcon(category.icon), dot: category.color }}
+                      />
+                    )
+                  )}
+                </div>
+              </div>
+            ))}
 
           <div>
             {sectionTitle('Geral')}

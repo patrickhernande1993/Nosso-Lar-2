@@ -112,10 +112,15 @@ export const Badge: React.FC<{ children: React.ReactNode; color?: string }> = ({
   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${color}`}>{children}</span>
 );
 
-export const StatusBadge: React.FC<{ status: 'PAID' | 'PENDING' }> = ({ status }) =>
+/** income = recebimento: mostra "Recebido / A receber" em vez de "Pago / Em aberto". */
+export const StatusBadge: React.FC<{ status: 'PAID' | 'PENDING'; income?: boolean }> = ({ status, income }) =>
   status === 'PAID' ? (
     <Badge color="bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/15">
-      <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mr-1.5" /> Pago
+      <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mr-1.5" /> {income ? 'Recebido' : 'Pago'}
+    </Badge>
+  ) : income ? (
+    <Badge color="bg-sky-50 text-[#3d5f85] ring-1 ring-inset ring-[#5279a3]/20">
+      <span className="w-1.5 h-1.5 rounded-full bg-[#5279a3] mr-1.5" /> A receber
     </Badge>
   ) : (
     <Badge color="bg-clay-50 text-clay-700 ring-1 ring-inset ring-clay-600/15">

@@ -3,6 +3,7 @@ import { Category, DEFAULT_CATEGORIES } from '../lib/categories';
 
 const BASE_COLUMNS = 'id, key, name, description, icon, color, sort_order';
 const GROUP_COLUMNS = `${BASE_COLUMNS}, is_group, parent_key`;
+const FULL_COLUMNS = `${GROUP_COLUMNS}, kind`;
 
 export interface CategoryListResult {
   categories: Category[];
@@ -10,6 +11,8 @@ export interface CategoryListResult {
   tableMissing: boolean;
   /** As colunas de grupo não existem (script supabase_subcategorias.sql não rodado). */
   groupsMissing: boolean;
+  /** A coluna kind não existe (script supabase_recebimentos.sql não rodado). */
+  kindMissing: boolean;
 }
 
 const fetchCategories = (columns: string) =>
@@ -20,20 +23,25 @@ const fetchCategories = (columns: string) =>
     .order('name', { ascending: true });
 
 export const CategoryService = {
+  /** Tenta as colunas mais novas primeiro e vai recuando se algum script ainda não foi rodado. */
   list: async (): Promise<CategoryListResult> => {
-    const withGroups = await fetchCategories(GROUP_COLUMNS);
-    if (!withGroups.error) {
-      return { categories: withGroups.data as unknown as Category[], tableMissing: false, groupsMissing: false };
+    const full = await fetchCategories(FULL_COLUMNS);
+    if (!full.error) {
+      return { categories: full.data as unknown as Category[], tableMissing: false, groupsMissing: false, kindMissing: false };
     }
 
-    // Sem as colunas novas: carrega do jeito antigo (todas as categorias sem grupo)
+    const withGroups = await fetchCategories(GROUP_COLUMNS);
+    if (!withGroups.error) {
+      return { categories: withGroups.data as unknown as Category[], tableMissing: false, groupsMissing: false, kindMissing: true };
+    }
+
     const plain = await fetchCategories(BASE_COLUMNS);
     if (!plain.error) {
-      return { categories: plain.data as unknown as Category[], tableMissing: false, groupsMissing: true };
+      return { categories: plain.data as unknown as Category[], tableMissing: false, groupsMissing: true, kindMissing: true };
     }
 
     console.warn('Tabela de categorias indisponível, usando padrão:', plain.error.message);
-    return { categories: DEFAULT_CATEGORIES, tableMissing: true, groupsMissing: true };
+    return { categories: DEFAULT_CATEGORIES, tableMissing: true, groupsMissing: true, kindMissing: true };
   },
 
   create: async (category: Omit<Category, 'id'>): Promise<void> => {

@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Loader2, ArrowUpRight, CalendarClock, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Search, Paperclip, RotateCcw } from 'lucide-react';
+import { Loader2, ArrowUpRight, CalendarClock, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Search, Paperclip, RotateCcw, UserRound } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import { ExpenseItem, ExpenseShare } from '../types';
 import { ShareService } from '../services/payerStorage';
 import { usePayers, initials } from '../lib/PayersContext';
 import { Card, PageHeader, StatusBadge } from './UI';
-import { categoryPath, formatBRL, getCategoryIcon } from '../lib/categories';
+import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -37,7 +37,8 @@ const selectCls =
 type StatusFilter = 'ALL' | 'PENDING' | 'PAID';
 
 export const Dashboard: React.FC = () => {
-  const { categories, tree, isLoading: categoriesLoading } = useCategories();
+  const { categories, expenseTree, incomeTree, isLoading: categoriesLoading } = useCategories();
+  const [kindFilter, setKindFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME'>('ALL');
   const [rawItems, setRawItems] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Por padrão a visão geral abre no mês corrente.
@@ -91,13 +92,33 @@ export const Dashboard: React.FC = () => {
       return (!selectedYear || y === selectedYear) && (!selectedMonth || m === selectedMonth);
     });
 
-    const paid = sum(items.filter(i => i.status === 'PAID'));
-    const pending = sum(items.filter(i => i.status === 'PENDING'));
+    const isInc = (i: ExpenseItem) => isIncome(categoryByKey.get(i.type));
+    const expItems = items.filter(i => !isInc(i));
+    const incItems = items.filter(isInc);
 
-    // Um card por item do topo do menu: grupos somam suas subcategorias
-    const byCategory = tree.map(({ category: cat, children }) => {
+    // Despesas (valor cheio)
+    const paid = sum(expItems.filter(i => i.status === 'PAID'));
+    const pending = sum(expItems.filter(i => i.status === 'PENDING'));
+
+    // "Minha parte" de cada despesa = valor - partes de outros pagantes
+    const mineOf = (i: ExpenseItem) => i.amount - (sharesByExpense.get(String(i.id)) ?? []).reduce((a, s) => a + s.amount, 0);
+    const outTotal = expItems.reduce((a, i) => a + mineOf(i), 0);
+    const outPaid = expItems.filter(i => i.status === 'PAID').reduce((a, i) => a + mineOf(i), 0);
+
+    // Recebimentos
+    const inTotal = sum(incItems);
+    const inReceived = sum(incItems.filter(i => i.status === 'PAID'));
+
+    const byReceiver = [...RECEIVERS, 'Não informado']
+      .map(r => {
+        const rItems = incItems.filter(i => (i.receiver || 'Não informado') === r);
+        return { name: r, total: sum(rItems), received: sum(rItems.filter(i => i.status === 'PAID')) };
+      })
+      .filter(r => r.total > 0);
+
+    const summarize = (nodes: typeof expenseTree, pool: ExpenseItem[]) => nodes.map(({ category: cat, children }) => {
       const keys = new Set(cat.is_group ? children.map(c => c.key) : [cat.key]);
-      const catItems = items.filter(i => keys.has(i.type));
+      const catItems = pool.filter(i => keys.has(i.type));
       const catTotal = sum(catItems);
       const catPaid = sum(catItems.filter(i => i.status === 'PAID'));
       const subs = cat.is_group
@@ -108,13 +129,16 @@ export const Dashboard: React.FC = () => {
         : [];
       return { ...cat, total: catTotal, paid: catPaid, pending: catTotal - catPaid, count: catItems.length, subs };
     });
+    const byCategory = summarize(expenseTree, expItems);
+    const byIncomeCategory = summarize(incomeTree, incItems);
 
-    const byMonth = new Map<string, { paid: number; pending: number }>();
+    // Mês a mês: entradas x saídas (minha parte)
+    const byMonth = new Map<string, { entradas: number; saidas: number }>();
     items.forEach(i => {
       const key = i.date.slice(0, 7);
-      const row = byMonth.get(key) ?? { paid: 0, pending: 0 };
-      if (i.status === 'PAID') row.paid += i.amount;
-      else row.pending += i.amount;
+      const row = byMonth.get(key) ?? { entradas: 0, saidas: 0 };
+      if (isInc(i)) row.entradas += i.amount;
+      else row.saidas += mineOf(i);
       byMonth.set(key, row);
     });
     const monthly = Array.from(byMonth.entries())
@@ -147,26 +171,29 @@ export const Dashboard: React.FC = () => {
       .filter(g => g.shares.length > 0);
 
     return {
-      items, paid, pending, total: paid + pending, byCategory, monthly, period,
+      items, paid, pending, total: paid + pending, byCategory, byIncomeCategory, monthly, period,
       mine: paid + pending - others, toReceive, byPayer, hasShares: periodShares.length > 0,
+      inTotal, inReceived, outTotal, outPaid, byReceiver, hasIncome: incItems.length > 0,
+      saldoAtual: inReceived - outPaid, saldoPrevisto: inTotal - outTotal,
     };
-  }, [allItems, tree, selectedYear, selectedMonth, sharesByExpense, payers]);
+  }, [allItems, expenseTree, incomeTree, categoryByKey, selectedYear, selectedMonth, sharesByExpense, payers]);
 
   const listItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return data.items
+      .filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === isIncome(categoryByKey.get(i.type)))
       .filter(i => statusFilter === 'ALL' || i.status === statusFilter)
       .filter(i => !q || i.description.toLowerCase().includes(q) || categoryByKey.get(i.type)?.name.toLowerCase().includes(q))
       .sort((a, b) => a.date.localeCompare(b.date) || a.description.localeCompare(b.description));
-  }, [data.items, statusFilter, search, categoryByKey]);
+  }, [data.items, kindFilter, statusFilter, search, categoryByKey]);
 
   // Vencimentos são sempre calculados sobre todos os lançamentos, independente do filtro.
   const dueInfo = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const open = allItems.filter(i => i.status === 'PENDING').sort((a, b) => a.date.localeCompare(b.date));
+    const open = allItems.filter(i => i.status === 'PENDING' && !isIncome(categoryByKey.get(i.type))).sort((a, b) => a.date.localeCompare(b.date));
     const overdue = open.filter(i => i.date < today);
     return { overdueCount: overdue.length, overdueAmount: sum(overdue), next: open.find(i => i.date >= today), today };
-  }, [allItems]);
+  }, [allItems, categoryByKey]);
 
   const shiftMonth = (delta: number) => {
     let m = Number(selectedMonth) + delta;
@@ -203,10 +230,11 @@ export const Dashboard: React.FC = () => {
   const isSingleMonth = !!(selectedYear && selectedMonth);
   const isCurrentMonth = selectedYear === CURRENT_YEAR && selectedMonth === CURRENT_MONTH;
   const nextCategory = dueInfo.next && categoryByKey.get(dueInfo.next.type);
+  const kindItems = data.items.filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === isIncome(categoryByKey.get(i.type)));
   const counts = {
-    ALL: data.items.length,
-    PENDING: data.items.filter(i => i.status === 'PENDING').length,
-    PAID: data.items.filter(i => i.status === 'PAID').length,
+    ALL: kindItems.length,
+    PENDING: kindItems.filter(i => i.status === 'PENDING').length,
+    PAID: kindItems.filter(i => i.status === 'PAID').length,
   };
 
   return (
@@ -214,7 +242,7 @@ export const Dashboard: React.FC = () => {
       <PageHeader
         eyebrow="Visão geral"
         title={data.period}
-        description="Todas as despesas do período, somando todas as categorias."
+        description="Entradas, saídas e o saldo do período, somando todas as categorias."
         actions={
           <div className="flex items-center gap-2 w-full">
             {isSingleMonth && (
@@ -255,35 +283,26 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <div className="lg:col-span-2 relative overflow-hidden rounded-3xl bg-brand-900 text-white p-6 md:p-8">
           <div className="absolute -right-16 -top-24 w-72 h-72 rounded-full bg-brand-500/20 blur-3xl pointer-events-none" />
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-200/70">Total de despesas · {data.period}</p>
-          <p className="font-display text-4xl md:text-5xl font-semibold mt-2 tabular">{formatBRL(data.total)}</p>
-
-          <div className="mt-8">
-            <div className="flex justify-between text-xs text-brand-100/70 mb-2">
-              <span>{Math.round(paidPct)}% pago</span>
-              <span>{data.items.length} {data.items.length === 1 ? 'lançamento' : 'lançamentos'}</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full rounded-full bg-brand-300 transition-all duration-700" style={{ width: `${paidPct}%` }} />
-            </div>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-200/70">Saldo atual · {data.period}</p>
+          <p className={`font-display text-4xl md:text-5xl font-semibold mt-2 tabular ${data.saldoAtual < 0 ? 'text-clay-200' : ''}`}>{formatBRL(data.saldoAtual)}</p>
+          <p className="text-sm text-brand-100/70 mt-2">
+            Recebido menos o que já foi pago. Previsto até o fim do período:{' '}
+            <span className={`font-semibold tabular ${data.saldoPrevisto < 0 ? 'text-clay-200' : 'text-white'}`}>{formatBRL(data.saldoPrevisto)}</span>
+          </p>
 
           <div className="grid grid-cols-2 gap-3 md:gap-4 mt-6">
             {[
-              { label: 'Pago', value: data.paid, dot: 'bg-brand-300' },
-              { label: 'Falta pagar', value: data.pending, dot: 'bg-clay-300' },
-              ...(data.hasShares
-                ? [
-                    { label: 'Minha parte', value: data.mine, dot: 'bg-white' },
-                    { label: 'A receber', value: data.toReceive, dot: 'bg-sky-300' },
-                  ]
-                : []),
+              { label: 'Entradas', value: data.inTotal, sub: `${formatBRL(data.inReceived)} recebido`, dot: 'bg-brand-300' },
+              { label: 'Saídas', value: data.outTotal, sub: `${formatBRL(data.outPaid)} pago${data.hasShares ? ' · sua parte' : ''}`, dot: 'bg-clay-300' },
+              { label: 'Falta pagar', value: data.pending, sub: `de ${formatBRL(data.total)} em despesas`, dot: 'bg-clay-400' },
+              { label: 'A receber', value: data.inTotal - data.inReceived + data.toReceive, sub: data.hasShares ? `inclui ${formatBRL(data.toReceive)} de reembolsos` : 'recebimentos pendentes', dot: 'bg-sky-300' },
             ].map(s => (
               <div key={s.label} className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 min-w-0">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand-200/70 whitespace-nowrap">
                   <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} /> {s.label}
                 </p>
                 <p className="text-lg md:text-xl font-bold mt-1 tabular truncate">{formatBRL(s.value)}</p>
+                <p className="text-[11px] text-brand-100/50 mt-0.5 truncate">{s.sub}</p>
               </div>
             ))}
           </div>
@@ -337,9 +356,26 @@ export const Dashboard: React.FC = () => {
             <h2 className="font-display text-xl font-semibold text-sand-900">Lançamentos</h2>
             <p className="text-xs text-sand-400">{data.period} · todas as categorias</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="tablist">
-              {([['ALL', 'Todos'], ['PENDING', 'Em aberto'], ['PAID', 'Pagos']] as const).map(([value, label]) => (
+          <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+            {data.hasIncome && (
+              <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="tablist" aria-label="Tipo">
+                {([['ALL', 'Tudo'], ['EXPENSE', 'Despesas'], ['INCOME', 'Entradas']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    role="tab"
+                    aria-selected={kindFilter === value}
+                    onClick={() => setKindFilter(value)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                      kindFilter === value ? 'bg-white shadow-sm text-sand-900' : 'text-sand-500 hover:text-sand-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="tablist" aria-label="Status">
+              {([['ALL', 'Todos'], ['PENDING', 'Em aberto'], ['PAID', 'Quitados']] as const).map(([value, label]) => (
                 <button
                   key={value}
                   role="tab"
@@ -370,6 +406,7 @@ export const Dashboard: React.FC = () => {
             {listItems.map(item => {
               const cat = categoryByKey.get(item.type)!;
               const Icon = getCategoryIcon(cat.icon);
+              const income = isIncome(cat);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
               return (
                 <li key={item.id} className="flex items-center gap-3 md:gap-4 px-5 py-3 hover:bg-sand-50/60 transition-colors">
@@ -380,7 +417,8 @@ export const Dashboard: React.FC = () => {
                     <p className="text-sm font-medium text-sand-900 truncate">{item.description}</p>
                     <p className="text-xs text-sand-400 truncate">
                       {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
-                      <span className={overdue ? 'text-clay-600 font-semibold' : ''}> · vence {formatShortDate(item.date)}{overdue && ' · vencido'}</span>
+                      {income && item.receiver && <span> · {item.receiver}</span>}
+                      <span className={overdue ? 'text-clay-600 font-semibold' : ''}> · {income ? 'recebe' : 'vence'} {formatShortDate(item.date)}{overdue && (income ? ' · atrasado' : ' · vencido')}</span>
                     </p>
                   </div>
                   {item.receiptUrl && (
@@ -391,13 +429,13 @@ export const Dashboard: React.FC = () => {
                   <button
                     onClick={() => toggleStatus(item)}
                     disabled={togglingId === item.id}
-                    title={item.status === 'PAID' ? 'Marcar como em aberto' : 'Marcar como pago'}
+                    title={item.status === 'PAID' ? (income ? 'Marcar como a receber' : 'Marcar como em aberto') : income ? 'Marcar como recebido' : 'Marcar como pago'}
                     className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
                   >
-                    {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} />}
+                    {togglingId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-sand-400 mx-4" /> : <StatusBadge status={item.status} income={income} />}
                   </button>
                   <div className="w-24 md:w-28 text-right flex-shrink-0">
-                    <span className="block text-sm font-semibold text-sand-900 tabular">{formatBRL(item.amount)}</span>
+                    <span className={`block text-sm font-semibold tabular ${income ? 'text-brand-700' : 'text-sand-900'}`}>{income ? '+ ' : ''}{formatBRL(item.amount)}</span>
                     {(() => {
                       const itemShares = sharesByExpense.get(String(item.id));
                       if (!itemShares?.length) return null;
@@ -476,7 +514,64 @@ export const Dashboard: React.FC = () => {
       )}
 
       {/* Categorias */}
-      <h2 className="font-display text-xl font-semibold text-sand-900 mt-10 mb-4">Por categoria</h2>
+      {data.hasIncome && (
+        <>
+          <h2 className="font-display text-xl font-semibold text-sand-900 mt-10 mb-4">Recebimentos</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {data.byIncomeCategory.filter(c => c.count > 0).map(cat => {
+              const Icon = getCategoryIcon(cat.icon);
+              const pct = cat.total > 0 ? (cat.paid / cat.total) * 100 : 0;
+              return (
+                <Link key={cat.key} to={categoryPath(cat.key)} className="group bg-white rounded-2xl border border-sand-200 shadow-soft p-5 hover:border-sand-300 hover:-translate-y-0.5 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="grid place-items-center w-10 h-10 rounded-xl" style={{ backgroundColor: `${cat.color}1a`, color: cat.color }}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sand-900 text-sm truncate">{cat.name}</p>
+                      <p className="text-xs text-sand-400">{cat.count} {cat.count === 1 ? 'recebimento' : 'recebimentos'}</p>
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-sand-300 group-hover:text-sand-600 transition" />
+                  </div>
+                  <p className="text-2xl font-bold text-brand-700 mt-5 tabular">+ {formatBRL(cat.total)}</p>
+                  <div className="h-1.5 rounded-full bg-sand-100 mt-3 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: cat.color }} />
+                  </div>
+                  <div className="flex justify-between text-xs mt-2">
+                    <span className="text-sand-500">{Math.round(pct)}% recebido</span>
+                    <span className={cat.pending > 0 ? 'text-[#3d5f85] font-medium' : 'text-sand-400'}>
+                      {cat.pending > 0 ? `${formatBRL(cat.pending)} a receber` : 'Tudo recebido'}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+            {data.byReceiver.length > 0 && (
+              <Card className="p-5">
+                <div className="flex items-center gap-2 text-sand-500 text-xs font-semibold uppercase tracking-wider">
+                  <UserRound className="w-4 h-4 text-brand-600" /> Por pessoa
+                </div>
+                <ul className="mt-4 space-y-3">
+                  {data.byReceiver.map(r => (
+                    <li key={r.name}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-sand-800">{r.name}</span>
+                        <span className="font-semibold text-sand-900 tabular">{formatBRL(r.total)}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-sand-100 mt-1.5 overflow-hidden">
+                        <div className="h-full rounded-full bg-brand-500" style={{ width: `${data.inTotal ? (r.total / data.inTotal) * 100 : 0}%` }} />
+                      </div>
+                      <p className="text-[11px] text-sand-400 mt-1">{formatBRL(r.received)} recebido</p>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
+
+      <h2 className="font-display text-xl font-semibold text-sand-900 mt-10 mb-4">{data.hasIncome ? 'Despesas por categoria' : 'Por categoria'}</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {data.byCategory.map(cat => {
           const Icon = getCategoryIcon(cat.icon);
@@ -532,7 +627,7 @@ export const Dashboard: React.FC = () => {
         <div className={`grid grid-cols-1 gap-4 mt-10 ${isSingleMonth ? '' : 'lg:grid-cols-5'}`}>
           <Card className={isSingleMonth ? '' : 'lg:col-span-2'}>
             <h3 className="font-display text-lg font-semibold text-sand-900">Distribuição</h3>
-            <p className="text-xs text-sand-400 mb-2">Participação de cada categoria no total</p>
+            <p className="text-xs text-sand-400 mb-2">Participação de cada categoria no total de despesas</p>
             <div className={isSingleMonth ? 'grid md:grid-cols-2 gap-6 items-center' : ''}>
               <div className="relative h-56">
                 <ResponsiveContainer width="100%" height="100%">
@@ -568,12 +663,12 @@ export const Dashboard: React.FC = () => {
             <Card className="lg:col-span-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="font-display text-lg font-semibold text-sand-900">Mês a mês</h3>
-                  <p className="text-xs text-sand-400">Valores por mês de vencimento</p>
+                  <h3 className="font-display text-lg font-semibold text-sand-900">Entradas x saídas</h3>
+                  <p className="text-xs text-sand-400">Entradas e saídas (sua parte) por mês</p>
                 </div>
                 <div className="flex gap-3 text-xs text-sand-500">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-brand-600" /> Pago</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-clay-300" /> Em aberto</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-brand-600" /> Entradas</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-clay-300" /> Saídas</span>
                 </div>
               </div>
               <div className="h-80 mt-4 -ml-2">
@@ -583,8 +678,8 @@ export const Dashboard: React.FC = () => {
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#8c806b' }} axisLine={false} tickLine={false} minTickGap={8} />
                     <YAxis tickFormatter={compactBRL} tick={{ fontSize: 11, fill: '#8c806b' }} axisLine={false} tickLine={false} width={64} />
                     <Tooltip cursor={{ fill: '#faf8f4' }} formatter={(v: number) => formatBRL(v)} contentStyle={tooltipStyle} />
-                    <Bar dataKey="paid" name="Pago" stackId="a" fill="#2f6b57" maxBarSize={28} />
-                    <Bar dataKey="pending" name="Em aberto" stackId="a" fill="#e4a178" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="entradas" name="Entradas" fill="#2f6b57" radius={[6, 6, 0, 0]} maxBarSize={20} />
+                    <Bar dataKey="saidas" name="Saídas" fill="#e4a178" radius={[6, 6, 0, 0]} maxBarSize={20} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

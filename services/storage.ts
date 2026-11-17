@@ -59,7 +59,8 @@ export const StorageService = {
       monthYear: item.month_year,
       createdAt: item.created_at,
       receiptUrl: item.receipt_url,
-      status: item.status || 'PENDING' // Fallback para registros antigos
+      status: item.status || 'PENDING', // Fallback para registros antigos
+      ...(item.receiver != null ? { receiver: item.receiver } : {})
     }));
   },
 
@@ -83,7 +84,8 @@ export const StorageService = {
       monthYear: item.month_year,
       createdAt: item.created_at,
       receiptUrl: item.receipt_url,
-      status: item.status || 'PENDING'
+      status: item.status || 'PENDING',
+      ...(item.receiver != null ? { receiver: item.receiver } : {})
     }));
   },
 
@@ -110,7 +112,9 @@ export const StorageService = {
       month_year: item.monthYear,
       created_at: item.createdAt,
       receipt_url: receiptUrl,
-      status: item.status
+      status: item.status,
+      // Só envia quem recebeu em recebimentos (a coluna pode não existir antes do script)
+      ...(item.receiver !== undefined ? { receiver: item.receiver } : {})
     };
 
     const { error } = await supabase
@@ -134,7 +138,8 @@ export const StorageService = {
       month_year: item.monthYear,
       created_at: item.createdAt,
       receipt_url: item.receiptUrl,
-      status: item.status
+      status: item.status,
+      ...(item.receiver !== undefined ? { receiver: item.receiver } : {})
     }));
 
     const { error } = await supabase
@@ -167,7 +172,8 @@ export const StorageService = {
       date: updatedItem.date,
       month_year: updatedItem.monthYear,
       receipt_url: receiptUrl,
-      status: updatedItem.status
+      status: updatedItem.status,
+      ...(updatedItem.receiver !== undefined ? { receiver: updatedItem.receiver } : {})
     };
 
     const { error } = await supabase

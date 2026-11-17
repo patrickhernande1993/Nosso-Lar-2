@@ -1,8 +1,17 @@
 import {
   CreditCard, FileText, Wallet, Landmark, Sofa, Zap, Home, Car, ShoppingCart, Wifi, Droplets, Flame,
   Wrench, Shield, PawPrint, GraduationCap, HeartPulse, Plane, Gift, Hammer, Tv, Utensils, Receipt, PiggyBank,
+  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2,
   type LucideIcon,
 } from 'lucide-react';
+
+/** Despesa (sai dinheiro) ou recebimento (entra dinheiro). */
+export type CategoryKind = 'EXPENSE' | 'INCOME';
+
+export const isIncome = (c?: { kind?: CategoryKind } | null) => c?.kind === 'INCOME';
+
+/** Quem recebeu um recebimento. */
+export const RECEIVERS = ['Isabelly', 'Patrick', 'Ambos'] as const;
 
 export interface Category {
   id?: string;
@@ -16,6 +25,8 @@ export interface Category {
   is_group?: boolean;
   /** Chave do grupo ao qual a categoria pertence (null = sem grupo). */
   parent_key?: string | null;
+  /** Ausente = despesa (antes do script supabase_recebimentos.sql). */
+  kind?: CategoryKind;
 }
 
 /** Item do topo do menu: um grupo com suas subcategorias, ou uma categoria sem grupo. */
@@ -42,6 +53,7 @@ export const leafCategories = (categories: Category[]) => categories.filter(c =>
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Wallet, CreditCard, FileText, Landmark, Sofa, Zap, Home, Car, ShoppingCart, Wifi, Droplets, Flame,
   Wrench, Shield, PawPrint, GraduationCap, HeartPulse, Plane, Gift, Hammer, Tv, Utensils, Receipt, PiggyBank,
+  Briefcase, Coins, TrendingUp, Banknote, HandCoins, Building2,
 };
 
 export const CATEGORY_COLORS = [

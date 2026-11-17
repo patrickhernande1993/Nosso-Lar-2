@@ -5,15 +5,16 @@ import { useCategories } from '../lib/CategoriesContext';
 import { usePayers, initials } from '../lib/PayersContext';
 import { CategoryService } from '../services/categoryStorage';
 import { PayerService } from '../services/payerStorage';
-import { Category, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryIcon, makeCategoryKey } from '../lib/categories';
+import { Category, CategoryKind, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryIcon, isIncome, makeCategoryKey } from '../lib/categories';
 import { Payer } from '../types';
 import categoriesSql from '../supabase_categories.sql?raw';
 import payersSql from '../supabase_pagantes.sql?raw';
 import subcategoriesSql from '../supabase_subcategorias.sql?raw';
+import incomesSql from '../supabase_recebimentos.sql?raw';
 
-type Draft = { id?: string; name: string; description: string; icon: string; color: string; isGroup: boolean; parentKey: string };
+type Draft = { id?: string; name: string; description: string; icon: string; color: string; isGroup: boolean; parentKey: string; kind: CategoryKind };
 
-const emptyDraft = (): Draft => ({ name: '', description: '', icon: 'Wallet', color: CATEGORY_COLORS[0], isGroup: false, parentKey: '' });
+const emptyDraft = (): Draft => ({ name: '', description: '', icon: 'Wallet', color: CATEGORY_COLORS[0], isGroup: false, parentKey: '', kind: 'EXPENSE' });
 
 const SetupBanner: React.FC<{ sql: string; what: string; onReload: () => void }> = ({ sql, what, onReload }) => {
   const [copied, setCopied] = useState(false);
@@ -208,19 +209,24 @@ const PayersSettings: React.FC = () => {
 };
 
 const CategoriesSettings: React.FC = () => {
-  const { categories, tree, tableMissing, groupsMissing, reload } = useCategories();
+  const { categories, tree, expenseTree, incomeTree, tableMissing, groupsMissing, kindMissing, reload } = useCategories();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const groups = categories.filter(c => c.is_group);
-  const siblingsOf = (parentKey: string | null | undefined) =>
-    parentKey ? tree.find(n => n.category.key === parentKey)?.children ?? [] : tree.map(n => n.category);
-  const nextOrder = (parentKey: string | null | undefined) => Math.max(0, ...siblingsOf(parentKey).map(c => c.sort_order)) + 1;
+  const kindOf = (c: Category): CategoryKind => (isIncome(c) ? 'INCOME' : 'EXPENSE');
+  // Grupos disponíveis para o tipo escolhido (despesa só entra em grupo de despesa)
+  const groupsFor = (kind: CategoryKind) => categories.filter(c => c.is_group && kindOf(c) === kind);
+  const siblingsOf = (parentKey: string | null | undefined, kind: CategoryKind) =>
+    parentKey
+      ? tree.find(n => n.category.key === parentKey)?.children ?? []
+      : (kind === 'INCOME' ? incomeTree : expenseTree).map(n => n.category);
+  const nextOrder = (parentKey: string | null | undefined, kind: CategoryKind) =>
+    Math.max(0, ...siblingsOf(parentKey, kind).map(c => c.sort_order)) + 1;
 
   const openNew = (isGroup: boolean) => setDraft({ ...emptyDraft(), isGroup, icon: isGroup ? 'Home' : 'Wallet' });
   const openEdit = (c: Category) =>
-    setDraft({ id: c.id, name: c.name, description: c.description, icon: c.icon, color: c.color, isGroup: !!c.is_group, parentKey: c.parent_key ?? '' });
+    setDraft({ id: c.id, name: c.name, description: c.description, icon: c.icon, color: c.color, isGroup: !!c.is_group, parentKey: c.parent_key ?? '', kind: kindOf(c) });
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,15 +240,16 @@ const CategoriesSettings: React.FC = () => {
         const parentChanged = !groupsMissing && !draft.isGroup && (current?.parent_key ?? null) !== parentKey;
         await CategoryService.update(draft.id, {
           ...data,
-          ...(parentChanged ? { parent_key: parentKey, sort_order: nextOrder(parentKey) } : {}),
+          ...(parentChanged ? { parent_key: parentKey, sort_order: nextOrder(parentKey, draft.kind) } : {}),
         });
       } else {
         const key = makeCategoryKey(data.name, categories.map(c => c.key));
         await CategoryService.create({
           ...data,
           key,
-          sort_order: nextOrder(parentKey),
+          sort_order: nextOrder(parentKey, draft.kind),
           ...(groupsMissing ? {} : { is_group: draft.isGroup, parent_key: parentKey }),
+          ...(kindMissing ? {} : { kind: draft.kind }),
         });
       }
       await reload();
@@ -258,7 +265,7 @@ const CategoriesSettings: React.FC = () => {
     setBusyId(c.id!);
     try {
       if (c.is_group) {
-        const children = siblingsOf(c.key);
+        const children = siblingsOf(c.key, kindOf(c));
         if (children.length > 0) {
           alert(`O grupo "${c.name}" tem ${children.length} subcategoria(s).\n\nMova-as para fora do grupo ou exclua-as antes de remover o grupo.`);
           return;
@@ -282,7 +289,7 @@ const CategoriesSettings: React.FC = () => {
 
   /** Move dentro do mesmo nível (topo do menu ou dentro do mesmo grupo). */
   const move = async (c: Category, delta: number) => {
-    const siblings = [...siblingsOf(c.parent_key && categories.some(g => g.key === c.parent_key) ? c.parent_key : null)];
+    const siblings = [...siblingsOf(c.parent_key && categories.some(g => g.key === c.parent_key && g.is_group) ? c.parent_key : null, kindOf(c))];
     const index = siblings.findIndex(s => s.key === c.key);
     const target = index + delta;
     if (index < 0 || target < 0 || target >= siblings.length) return;
@@ -353,8 +360,9 @@ const CategoriesSettings: React.FC = () => {
     <div>
       {tableMissing && <SetupBanner sql={categoriesSql} what="as categorias" onReload={reload} />}
       {!tableMissing && groupsMissing && <SetupBanner sql={subcategoriesSql} what="as subcategorias" onReload={reload} />}
+      {!tableMissing && !groupsMissing && kindMissing && <SetupBanner sql={incomesSql} what="os recebimentos" onReload={reload} />}
       <TabToolbar
-        text="Categorias recebem lançamentos e viram itens do menu. Grupos (ex.: Moradia) juntam várias categorias e mostram o total de todas elas."
+        text="Categorias de despesa e de recebimento viram itens do menu. Grupos (ex.: Moradia) juntam várias categorias e mostram o total de todas elas."
         action={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto flex-shrink-0">
             {!groupsMissing && (
@@ -369,18 +377,28 @@ const CategoriesSettings: React.FC = () => {
         }
       />
 
-      <Card className="p-0 overflow-hidden">
-        <ul className="divide-y divide-sand-100">
-          {tree.map(({ category, children }, i) => (
-            <React.Fragment key={category.key}>
-              <Row c={category} index={i} count={tree.length} childCount={children.length} />
-              {children.map((child, j) => (
-                <Row key={child.key} c={child} index={j} count={children.length} nested />
-              ))}
-            </React.Fragment>
-          ))}
-        </ul>
-      </Card>
+      {[
+        { title: 'Despesas', nodes: expenseTree },
+        { title: 'Recebimentos', nodes: incomeTree },
+      ]
+        .filter(sec => sec.nodes.length > 0 || sec.title === 'Despesas')
+        .map(sec => (
+          <div key={sec.title} className="mb-6">
+            {!kindMissing && <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sand-400 mb-2 px-1">{sec.title}</p>}
+            <Card className="p-0 overflow-hidden">
+              <ul className="divide-y divide-sand-100">
+                {sec.nodes.map(({ category, children }, i) => (
+                  <React.Fragment key={category.key}>
+                    <Row c={category} index={i} count={sec.nodes.length} childCount={children.length} />
+                    {children.map((child, j) => (
+                      <Row key={child.key} c={child} index={j} count={children.length} nested />
+                    ))}
+                  </React.Fragment>
+                ))}
+              </ul>
+            </Card>
+          </div>
+        ))}
 
       <Modal
         isOpen={!!draft}
@@ -399,17 +417,38 @@ const CategoriesSettings: React.FC = () => {
                   {draft.isGroup
                     ? 'Grupo: junta outras categorias'
                     : draft.parentKey
-                      ? `Dentro de ${groups.find(g => g.key === draft.parentKey)?.name ?? ''}`
+                      ? `Dentro de ${categories.find(g => g.key === draft.parentKey)?.name ?? ''}`
                       : draft.description || 'Assim ela aparece no menu'}
                 </p>
               </div>
             </div>
 
+            {!draft.id && !kindMissing && (
+              <div>
+                <span className="block text-xs font-semibold text-sand-600 mb-1.5">Tipo</span>
+                <div className="grid grid-cols-2 gap-1 p-1 bg-sand-100 rounded-xl" role="radiogroup">
+                  {([['EXPENSE', 'Despesa'], ['INCOME', 'Recebimento']] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={draft.kind === value}
+                      onClick={() => setDraft({ ...draft, kind: value, parentKey: '' })}
+                      disabled={isSaving}
+                      className={`py-2 rounded-lg text-sm font-semibold transition-all ${draft.kind === value ? 'bg-white shadow-sm text-brand-700' : 'text-sand-500 hover:text-sand-800'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Input
               label="Nome"
               value={draft.name}
               onChange={e => setDraft({ ...draft, name: e.target.value })}
-              placeholder={draft.isGroup ? 'Ex: Moradia, Carro, Lazer' : 'Ex: Internet, Água, Reforma'}
+              placeholder={draft.isGroup ? 'Ex: Moradia, Carro, Lazer' : draft.kind === 'INCOME' ? 'Ex: Salário, Freelas, Aluguel' : 'Ex: Internet, Água, Reforma'}
               required
               maxLength={40}
               autoFocus
@@ -426,9 +465,9 @@ const CategoriesSettings: React.FC = () => {
                   className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Nenhum grupo (aparece solta no menu)</option>
-                  {groups.map(g => <option key={g.key} value={g.key}>{g.name}</option>)}
+                  {groupsFor(draft.kind).map(g => <option key={g.key} value={g.key}>{g.name}</option>)}
                 </select>
-                {groups.length === 0 && <p className="text-xs text-sand-400 mt-1">Crie um grupo primeiro para poder colocar categorias dentro dele.</p>}
+                {groupsFor(draft.kind).length === 0 && <p className="text-xs text-sand-400 mt-1">Crie um grupo primeiro para poder colocar categorias dentro dele.</p>}
               </div>
             )}
 
