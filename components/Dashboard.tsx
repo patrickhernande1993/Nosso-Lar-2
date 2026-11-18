@@ -184,14 +184,30 @@ export const Dashboard: React.FC = () => {
     };
   }, [allItems, expenseTree, incomeTree, categoryByKey, selectedYear, selectedMonth, sharesByExpense, payers]);
 
+  // Reembolsos de pagantes entram na lista como entradas (a receber / recebido)
+  type Row = ExpenseItem & { share?: ExpenseShare; payerName?: string };
+  const allRows = useMemo<Row[]>(() => {
+    const reimb: Row[] = data.byPayer.flatMap(g => g.shares.map(({ share, item }) => ({
+      ...item,
+      id: `share:${share.id}`,
+      description: item.description,
+      amount: share.amount,
+      status: share.reimbursed ? 'PAID' as const : 'PENDING' as const,
+      cardId: undefined, accountId: undefined, receiptUrl: undefined,
+      share, payerName: g.payer.name,
+    })));
+    return [...data.items, ...reimb];
+  }, [data]);
+  const rowIsIncome = (i: Row) => !!i.share || isIncome(categoryByKey.get(i.type));
+
   const listItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.items
-      .filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === isIncome(categoryByKey.get(i.type)))
+    return allRows
+      .filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === rowIsIncome(i))
       .filter(i => statusFilter === 'ALL' || i.status === statusFilter)
       .filter(i => !q || i.description.toLowerCase().includes(q) || categoryByKey.get(i.type)?.name.toLowerCase().includes(q))
       .sort((a, b) => a.date.localeCompare(b.date) || a.description.localeCompare(b.description));
-  }, [data.items, kindFilter, statusFilter, search, categoryByKey]);
+  }, [allRows, kindFilter, statusFilter, search, categoryByKey]);
 
   // Vencimentos são sempre calculados sobre todos os lançamentos, independente do filtro.
   const dueInfo = useMemo(() => {
@@ -242,7 +258,7 @@ export const Dashboard: React.FC = () => {
   const isSingleMonth = !!(selectedYear && selectedMonth);
   const isCurrentMonth = selectedYear === CURRENT_YEAR && selectedMonth === CURRENT_MONTH;
   const nextCategory = dueInfo.next && categoryByKey.get(dueInfo.next.type);
-  const kindItems = data.items.filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === isIncome(categoryByKey.get(i.type)));
+  const kindItems = allRows.filter(i => kindFilter === 'ALL' || (kindFilter === 'INCOME') === rowIsIncome(i));
   const counts = {
     ALL: kindItems.length,
     PENDING: kindItems.filter(i => i.status === 'PENDING').length,
@@ -372,7 +388,7 @@ export const Dashboard: React.FC = () => {
             <p className="text-xs text-sand-400">{data.period} · todas as categorias</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
-            {data.hasIncome && (
+            {(data.hasIncome || data.hasShares) && (
               <div className="grid grid-cols-3 gap-1 p-1 bg-sand-100 rounded-xl" role="tablist" aria-label="Tipo">
                 {([['ALL', 'Tudo'], ['EXPENSE', 'Despesas'], ['INCOME', 'Entradas']] as const).map(([value, label]) => (
                   <button
@@ -431,13 +447,13 @@ export const Dashboard: React.FC = () => {
             {listItems.map(item => {
               const cat = categoryByKey.get(item.type)!;
               const Icon = getCategoryIcon(cat.icon);
-              const income = isIncome(cat);
+              const income = rowIsIncome(item);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
-              const pay = payInfo(item);
+              const pay = item.share ? null : payInfo(item);
               const statusButton = (
                 <button
-                  onClick={() => toggleStatus(item)}
-                  disabled={togglingId === item.id}
+                  onClick={() => (item.share ? toggleReimbursed(item.share) : toggleStatus(item))}
+                  disabled={togglingId === item.id || (!!item.share && togglingId === item.share.id)}
                   title={item.status === 'PAID' ? (income ? 'Marcar como a receber' : 'Marcar como em aberto') : income ? 'Marcar como recebido' : 'Marcar como pago'}
                   className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
                 >
@@ -458,6 +474,7 @@ export const Dashboard: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-sand-900 line-clamp-2 break-words sm:truncate">{item.description}</p>
                     <p className="text-xs text-sand-400 truncate">
+                      {item.share && <span className="font-semibold text-brand-700">Reembolso de {item.payerName} · </span>}
                       {cat.parent_key && categoryByKey.get(cat.parent_key) && <span>{categoryByKey.get(cat.parent_key)!.name} › </span>}<Link to={categoryPath(cat.key)} className="hover:text-sand-700 hover:underline">{cat.name}</Link>
                       {income && item.receiver && <span> · {item.receiver}</span>}
                       {pay && <span className="lg:hidden"> · {pay.conta} · {pay.metodo}</span>}
