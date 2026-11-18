@@ -7,7 +7,7 @@ import { ExpenseItem, ExpenseShare } from '../types';
 import { ShareService } from '../services/payerStorage';
 import { usePayers, initials } from '../lib/PayersContext';
 import { useWallet, paymentInfo } from '../lib/WalletContext';
-import { Card, PageHeader, StatusBadge } from './UI';
+import { Button, Card, Modal, PageHeader, StatusBadge } from './UI';
 import { RECEIVERS, categoryPath, formatBRL, getCategoryIcon, isIncome } from '../lib/categories';
 import { useCategories } from '../lib/CategoriesContext';
 import { NewEntryLauncher } from './NewEntryLauncher';
@@ -51,7 +51,11 @@ export const Dashboard: React.FC = () => {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [shares, setShares] = useState<ExpenseShare[]>([]);
   const { payers, payerById } = usePayers();
-  const { tableMissing: walletMissing, accountById, cardById } = useWallet();
+  const { tableMissing: walletMissing, accountById, cardById, accounts, cards } = useWallet();
+  // Ao marcar como pago/recebido: pergunta a conta (ou cartão) e a data
+  const [payTarget, setPayTarget] = useState<(ExpenseItem & { share?: ExpenseShare }) | null>(null);
+  const [payMethodSel, setPayMethodSel] = useState('');
+  const [payDateSel, setPayDateSel] = useState('');
 
   const payInfo = (item: ExpenseItem) => paymentInfo(item, categoryByKey.get(item.type), accountById, cardById);
 
@@ -226,7 +230,51 @@ export const Dashboard: React.FC = () => {
     setSelectedYear(String(y));
   };
 
+  const askPayment = (row: ExpenseItem & { share?: ExpenseShare }) => {
+    setPayTarget(row);
+    setPayMethodSel(row.share ? (row.share.accountId ? `acc:${row.share.accountId}` : '') : row.cardId ? `card:${row.cardId}` : row.accountId ? `acc:${row.accountId}` : '');
+    setPayDateSel(new Date().toISOString().slice(0, 10));
+  };
+
+  const confirmPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payTarget) return;
+    const accId = payMethodSel.startsWith('acc:') ? payMethodSel.slice(4) : null;
+    const cardId = payMethodSel.startsWith('card:') ? payMethodSel.slice(5) : null;
+    if (payTarget.share) {
+      const share = payTarget.share;
+      setTogglingId(share.id);
+      try {
+        await ShareService.setReimbursed(share.id, true, accId);
+        setShares(prev => prev.map(s => (s.id === share.id ? { ...s, reimbursed: true, accountId: accId ?? undefined } : s)));
+        setPayTarget(null);
+      } catch (err: any) {
+        alert('Erro ao registrar o reembolso: ' + (err?.message || 'verifique o console.'));
+      } finally {
+        setTogglingId(null);
+      }
+      return;
+    }
+    const item = payTarget;
+    const updated: ExpenseItem = {
+      ...item,
+      status: 'PAID',
+      ...(walletMissing ? {} : { accountId: accId, cardId, paymentDate: payDateSel || new Date().toISOString().slice(0, 10) }),
+    };
+    setTogglingId(item.id);
+    try {
+      await StorageService.update(updated);
+      setRawItems(prev => prev.map(i => (i.id === item.id ? updated : i)));
+      setPayTarget(null);
+    } catch (err: any) {
+      alert('Erro ao atualizar status: ' + (err?.message || 'verifique o console.'));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const toggleStatus = async (item: ExpenseItem) => {
+    if (item.status === 'PENDING' && !walletMissing && (accounts.length > 0 || cards.length > 0)) return askPayment(item);
     const newStatus = item.status === 'PAID' ? 'PENDING' : 'PAID';
     const updated: ExpenseItem = {
       ...item,
@@ -449,10 +497,11 @@ export const Dashboard: React.FC = () => {
               const Icon = getCategoryIcon(cat.icon);
               const income = rowIsIncome(item);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
-              const pay = item.share ? null : payInfo(item);
+              const shareAcc = item.share?.accountId ? accountById.get(item.share.accountId) : undefined;
+              const pay = item.share ? (shareAcc ? { conta: shareAcc.name, metodo: 'Pix / débito', color: shareAcc.color } : null) : payInfo(item);
               const statusButton = (
                 <button
-                  onClick={() => (item.share ? toggleReimbursed(item.share) : toggleStatus(item))}
+                  onClick={() => (item.share ? (item.share.reimbursed || accounts.length === 0 ? toggleReimbursed(item.share) : askPayment(item)) : toggleStatus(item))}
                   disabled={togglingId === item.id || (!!item.share && togglingId === item.share.id)}
                   title={item.status === 'PAID' ? (income ? 'Marcar como a receber' : 'Marcar como em aberto') : income ? 'Marcar como recebido' : 'Marcar como pago'}
                   className="flex-shrink-0 disabled:opacity-50 hover:opacity-80 transition"
@@ -750,6 +799,46 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
       )}
+      <Modal isOpen={!!payTarget} onClose={() => !togglingId && setPayTarget(null)} title={payTarget && (payTarget.share || isIncome(categoryByKey.get(payTarget.type))) ? 'Marcar como recebido' : 'Marcar como pago'}>
+        {payTarget && (() => {
+          const inc = !!payTarget.share || isIncome(categoryByKey.get(payTarget.type));
+          return (
+            <form onSubmit={confirmPayment} className="space-y-4">
+              <p className="text-sm text-sand-600"><strong className="text-sand-900">{payTarget.description}</strong> · {formatBRL(payTarget.amount)}</p>
+              <div>
+                <label className="block text-xs font-semibold text-sand-600 mb-1.5">{inc ? 'Recebido na conta' : 'Pago com'}</label>
+                <select value={payMethodSel} onChange={e => setPayMethodSel(e.target.value)} required autoFocus
+                  className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none">
+                  <option value="" disabled>Escolha…</option>
+                  {accounts.length > 0 && (
+                    <optgroup label="Contas (Pix / débito)">
+                      {accounts.map(a => <option key={a.id} value={`acc:${a.id}`}>{a.name}</option>)}
+                    </optgroup>
+                  )}
+                  {!inc && cards.length > 0 && (
+                    <optgroup label="Cartões de crédito">
+                      {cards.map(c => <option key={c.id} value={`card:${c.id}`}>{c.name}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              {!payTarget.share && (
+                <div>
+                  <label className="block text-xs font-semibold text-sand-600 mb-1.5">{inc ? 'Data do recebimento' : 'Data do pagamento'}</label>
+                  <input type="date" value={payDateSel} onChange={e => setPayDateSel(e.target.value)} required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none" />
+                </div>
+              )}
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+                <Button type="button" variant="ghost" onClick={() => setPayTarget(null)} disabled={!!togglingId} className="w-full sm:w-auto">Cancelar</Button>
+                <Button type="submit" disabled={!!togglingId || !payMethodSel} className="w-full sm:w-auto">
+                  {togglingId ? 'Salvando...' : inc ? 'Confirmar recebimento' : 'Confirmar pagamento'}
+                </Button>
+              </div>
+            </form>
+          );
+        })()}
+      </Modal>
     </div>
   );
 };

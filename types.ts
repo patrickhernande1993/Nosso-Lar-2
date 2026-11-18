@@ -68,6 +68,7 @@ export interface ExpenseShare {
   payerId: string;
   amount: number;
   reimbursed: boolean;
+  accountId?: string;
 }
 
 /** Parte sendo editada no formulário (ainda sem id). */
