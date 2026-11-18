@@ -56,6 +56,7 @@ export const Dashboard: React.FC = () => {
   const [payTarget, setPayTarget] = useState<(ExpenseItem & { share?: ExpenseShare }) | null>(null);
   const [payMethodSel, setPayMethodSel] = useState('');
   const [payDateSel, setPayDateSel] = useState('');
+  const [payKind, setPayKind] = useState('');
 
   const payInfo = (item: ExpenseItem) => paymentInfo(item, categoryByKey.get(item.type), accountById, cardById);
 
@@ -234,6 +235,7 @@ export const Dashboard: React.FC = () => {
     setPayTarget(row);
     setPayMethodSel(row.share ? (row.share.accountId ? `acc:${row.share.accountId}` : '') : row.cardId ? `card:${row.cardId}` : row.accountId ? `acc:${row.accountId}` : '');
     setPayDateSel(new Date().toISOString().slice(0, 10));
+    setPayKind(row.share ? row.share.paymentMethod ?? 'Pix' : row.paymentMethod ?? (row.cardId ? 'Cartão de crédito' : 'Pix'));
   };
 
   const confirmPayment = async (e: React.FormEvent) => {
@@ -245,8 +247,8 @@ export const Dashboard: React.FC = () => {
       const share = payTarget.share;
       setTogglingId(share.id);
       try {
-        await ShareService.setReimbursed(share.id, true, accId);
-        setShares(prev => prev.map(s => (s.id === share.id ? { ...s, reimbursed: true, accountId: accId ?? undefined } : s)));
+        await ShareService.setReimbursed(share.id, true, accId, payKind);
+        setShares(prev => prev.map(s => (s.id === share.id ? { ...s, reimbursed: true, accountId: accId ?? undefined, paymentMethod: payKind } : s)));
         setPayTarget(null);
       } catch (err: any) {
         alert('Erro ao registrar o reembolso: ' + (err?.message || 'verifique o console.'));
@@ -259,7 +261,7 @@ export const Dashboard: React.FC = () => {
     const updated: ExpenseItem = {
       ...item,
       status: 'PAID',
-      ...(walletMissing ? {} : { accountId: accId, cardId, paymentDate: payDateSel || new Date().toISOString().slice(0, 10) }),
+      ...(walletMissing ? {} : { accountId: accId, cardId, paymentMethod: payKind, paymentDate: payDateSel || new Date().toISOString().slice(0, 10) }),
     };
     setTogglingId(item.id);
     try {
@@ -498,7 +500,7 @@ export const Dashboard: React.FC = () => {
               const income = rowIsIncome(item);
               const overdue = item.status === 'PENDING' && item.date < dueInfo.today;
               const shareAcc = item.share?.accountId ? accountById.get(item.share.accountId) : undefined;
-              const pay = item.share ? (shareAcc ? { conta: shareAcc.name, metodo: 'Pix / débito', color: shareAcc.color } : null) : payInfo(item);
+              const pay = item.share ? (shareAcc ? { conta: shareAcc.name, metodo: item.share.paymentMethod || 'Pix / débito', color: shareAcc.color } : null) : payInfo(item);
               const statusButton = (
                 <button
                   onClick={() => (item.share ? (item.share.reimbursed || accounts.length === 0 ? toggleReimbursed(item.share) : askPayment(item)) : toggleStatus(item))}
@@ -806,22 +808,32 @@ export const Dashboard: React.FC = () => {
             <form onSubmit={confirmPayment} className="space-y-4">
               <p className="text-sm text-sand-600"><strong className="text-sand-900">{payTarget.description}</strong> · {formatBRL(payTarget.amount)}</p>
               <div>
-                <label className="block text-xs font-semibold text-sand-600 mb-1.5">{inc ? 'Recebido na conta' : 'Pago com'}</label>
-                <select value={payMethodSel} onChange={e => setPayMethodSel(e.target.value)} required autoFocus
-                  className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none">
-                  <option value="" disabled>Escolha…</option>
-                  {accounts.length > 0 && (
-                    <optgroup label="Contas (Pix / débito)">
-                      {accounts.map(a => <option key={a.id} value={`acc:${a.id}`}>{a.name}</option>)}
-                    </optgroup>
-                  )}
-                  {!inc && cards.length > 0 && (
-                    <optgroup label="Cartões de crédito">
-                      {cards.map(c => <option key={c.id} value={`card:${c.id}`}>{c.name}</option>)}
-                    </optgroup>
-                  )}
-                </select>
+                <label className="block text-xs font-semibold text-sand-600 mb-1.5">Método</label>
+                <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Método de pagamento">
+                  {(inc ? ['Pix', 'Transferência', 'Dinheiro', 'Depósito', 'Boleto'] : ['Pix', 'Débito', 'Cartão de crédito', 'Dinheiro', 'Boleto', 'Transferência']).map(m => (
+                    <button key={m} type="button" role="radio" aria-checked={payKind === m}
+                      onClick={() => { setPayKind(m); if ((m === 'Cartão de crédito') !== payMethodSel.startsWith('card:')) setPayMethodSel(''); }}
+                      className={`px-2 py-2 rounded-xl border text-xs font-semibold transition ${payKind === m ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-sand-200 bg-white text-sand-600 hover:border-sand-300'}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {payKind !== 'Dinheiro' && (() => {
+                const useCard = payKind === 'Cartão de crédito';
+                return (
+                  <div>
+                    <label className="block text-xs font-semibold text-sand-600 mb-1.5">{useCard ? 'Cartão' : inc ? 'Recebido na conta' : 'Conta'}</label>
+                    <select value={payMethodSel} onChange={e => setPayMethodSel(e.target.value)} required
+                      className="select-clean w-full pl-3.5 pr-9 py-2.5 rounded-xl border border-sand-200 bg-sand-50/60 text-sm text-sand-900 focus:bg-white focus:border-brand-500 focus:outline-none">
+                      <option value="" disabled>Escolha…</option>
+                      {useCard
+                        ? cards.map(c => <option key={c.id} value={`card:${c.id}`}>{c.name}</option>)
+                        : accounts.map(a => <option key={a.id} value={`acc:${a.id}`}>{a.name}</option>)}
+                    </select>
+                  </div>
+                );
+              })()}
               {!payTarget.share && (
                 <div>
                   <label className="block text-xs font-semibold text-sand-600 mb-1.5">{inc ? 'Data do recebimento' : 'Data do pagamento'}</label>
@@ -831,7 +843,7 @@ export const Dashboard: React.FC = () => {
               )}
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
                 <Button type="button" variant="ghost" onClick={() => setPayTarget(null)} disabled={!!togglingId} className="w-full sm:w-auto">Cancelar</Button>
-                <Button type="submit" disabled={!!togglingId || !payMethodSel} className="w-full sm:w-auto">
+                <Button type="submit" disabled={!!togglingId || !payKind || (payKind !== 'Dinheiro' && !payMethodSel)} className="w-full sm:w-auto">
                   {togglingId ? 'Salvando...' : inc ? 'Confirmar recebimento' : 'Confirmar pagamento'}
                 </Button>
               </div>

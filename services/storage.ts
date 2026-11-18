@@ -57,6 +57,7 @@ const fromDb = (item: any): ExpenseItem => ({
   ...(item.payment_date != null ? { paymentDate: String(item.payment_date).slice(0, 10) } : {}),
   ...(item.is_reserve_withdrawal ? { isReserve: true } : {}),
   ...(item.reserve_account_id != null ? { reserveAccountId: item.reserve_account_id } : {}),
+  ...(item.payment_method != null ? { paymentMethod: item.payment_method } : {}),
 });
 
 // Campos opcionais: só são enviados quando definidos (as colunas podem não existir antes dos scripts)
@@ -67,6 +68,7 @@ const optionalFields = (item: ExpenseItem) => ({
   ...(item.paymentDate !== undefined ? { payment_date: item.paymentDate } : {}),
   ...(item.isReserve !== undefined ? { is_reserve_withdrawal: item.isReserve } : {}),
   ...(item.reserveAccountId !== undefined ? { reserve_account_id: item.reserveAccountId } : {}),
+  ...(item.paymentMethod !== undefined ? { payment_method: item.paymentMethod } : {}),
 });
 
 export const StorageService = {
@@ -183,10 +185,16 @@ export const StorageService = {
       ...optionalFields(updatedItem)
     };
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('expenses')
       .update(dbItem)
       .eq('id', updatedItem.id);
+
+    // Antes do script supabase_metodo_pagamento.sql a coluna payment_method não existe
+    if (error && 'payment_method' in dbItem && String(error.message).includes('payment_method')) {
+      const { payment_method, ...rest } = dbItem as typeof dbItem & { payment_method?: string };
+      ({ error } = await supabase.from('expenses').update(rest).eq('id', updatedItem.id));
+    }
 
     if (error) {
       console.error('Erro ao atualizar no banco:', error);

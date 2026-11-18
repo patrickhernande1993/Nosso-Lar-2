@@ -86,16 +86,16 @@ export const paymentInfo = (
   const card = item.cardId ? cardById.get(item.cardId) : undefined;
   if (card) {
     const acc = card.accountId ? accountById.get(card.accountId) : undefined;
-    return { conta: acc?.name ?? card.name, metodo: `Cartão ${card.name}`, color: card.color };
+    return { conta: acc?.name ?? card.name, metodo: item.paymentMethod ? `${item.paymentMethod} · ${card.name}` : `Cartão ${card.name}`, color: card.color };
   }
   const acc = item.accountId ? accountById.get(item.accountId) : undefined;
-  if (!acc) return null;
+  if (!acc) return item.paymentMethod ? { conta: '—', metodo: item.paymentMethod, color: '#b3a68f' } : null;
   if (isInvestmentCategory(cat) && !item.isReserve) {
     const res = accountById.get(item.reserveAccountId ?? acc.id) ?? acc;
     return { conta: isIncome(cat) ? `Reserva ${res.name} → ${acc.name}` : `${acc.name} → reserva ${res.name}`, metodo: 'Transferência', color: acc.color };
   }
   if (item.isReserve) return { conta: acc.name, metodo: 'Reserva', color: acc.color };
-  return { conta: acc.name, metodo: 'Pix / débito', color: acc.color };
+  return { conta: acc.name, metodo: item.paymentMethod || 'Pix / débito', color: acc.color };
 };
 
 /**

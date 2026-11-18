@@ -8,6 +8,7 @@ const mapShare = (row: any): ExpenseShare => ({
   amount: Number(row.amount),
   reimbursed: !!row.reimbursed,
   ...(row.account_id ? { accountId: row.account_id } : {}),
+  ...(row.payment_method ? { paymentMethod: row.payment_method } : {}),
 });
 
 export const PayerService = {
@@ -48,7 +49,7 @@ export const PayerService = {
 
 export const ShareService = {
   getAll: async (): Promise<ExpenseShare[]> => {
-    let { data, error } = await supabase.from('expense_shares').select('id, expense_id, payer_id, amount, reimbursed, account_id');
+    let { data, error } = await supabase.from('expense_shares').select('id, expense_id, payer_id, amount, reimbursed, account_id, payment_method');
     // Antes do script supabase_reembolso_conta.sql a coluna account_id não existe
     if (error) ({ data, error } = await supabase.from('expense_shares').select('id, expense_id, payer_id, amount, reimbursed'));
     if (error) return [];
@@ -82,10 +83,10 @@ export const ShareService = {
     if (error) throw error;
   },
 
-  setReimbursed: async (shareId: string, reimbursed: boolean, accountId?: string | null): Promise<void> => {
+  setReimbursed: async (shareId: string, reimbursed: boolean, accountId?: string | null, method?: string | null): Promise<void> => {
     const base = { reimbursed, reimbursed_at: reimbursed ? new Date().toISOString() : null };
     if (accountId !== undefined) {
-      const { error } = await supabase.from('expense_shares').update({ ...base, account_id: reimbursed ? accountId : null }).eq('id', shareId);
+      const { error } = await supabase.from('expense_shares').update({ ...base, account_id: reimbursed ? accountId : null, ...(method !== undefined ? { payment_method: reimbursed ? method : null } : {}) }).eq('id', shareId);
       if (!error) return;
       console.warn('Conta do reembolso não gravada (rode supabase_reembolso_conta.sql):', error.message);
     }

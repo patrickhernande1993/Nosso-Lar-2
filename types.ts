@@ -26,6 +26,7 @@ export interface ExpenseItem {
   paymentDate?: string | null; // YYYY-MM-DD em que foi pago/recebido
   isReserve?: boolean; // pago com a reserva (investimentos) ou depositado nela
   reserveAccountId?: string | null; // aporte/resgate: conta cuja reserva recebe ou cede o valor
+  paymentMethod?: string | null;
 }
 
 // --- Contas e cartões ---
@@ -69,6 +70,7 @@ export interface ExpenseShare {
   amount: number;
   reimbursed: boolean;
   accountId?: string;
+  paymentMethod?: string;
 }
 
 /** Parte sendo editada no formulário (ainda sem id). */
